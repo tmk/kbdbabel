@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Sun to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $Id: kbdbabel_sun_ps2_8051.asm,v 1.1 2006/11/27 22:11:19 akurz Exp $
+; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.4 2006/11/22 22:34:21 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ; alternatively 18.432MHz and 14.7456 may be used.
@@ -901,7 +901,7 @@ timer0_long_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.1 2006/11/27 22:11:19 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.2 2006/11/27 22:23:36 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
