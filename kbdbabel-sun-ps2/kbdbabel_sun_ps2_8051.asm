@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Sun to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.4 2006/11/22 22:34:21 akurz Exp $
+; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.5 2006/11/30 09:55:09 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ; alternatively 18.432MHz and 14.7456 may be used.
@@ -28,10 +28,10 @@
 ; AT RX Communication abort	- p1.1
 ; TX buffer full		- p1.0
 ;
-; Build:
-; $ asl kbdbabel_sun_at_8051.asm -o kbdbabel_sun_at_8051.p
-; $ p2bin -l \$ff kbdbabel_sun_at_8051
-; write kbdbabel_sun_at_8051.bin on an empty 27C256 or AT89C2051
+; Build using the macroassembler by Alfred Arnold
+; $ asl kbdbabel_sun_ps2_8051.asm -o kbdbabel_sun_ps2_8051.p
+; $ p2bin -l \$ff kbdbabel_sun_ps2_8051
+; write kbdbabel_sun_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
 ; Copyright 2006 by Alexander Kurz
 ;
@@ -533,32 +533,6 @@ Sun2ATxlte6	DB	 01h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h
 Sun2ATxlte7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   01h,  00h,  01h,  01h,  00h,  00h,  00h,  00h
 
 ;----------------------------------------------------------
-; Sun2AT
-; Helper, translate Sun to AT scancode
-; input: dptr: table address, a: input scancode
-;----------------------------------------------------------
-Sun2AT:
-	; save make/break bit 7
-	mov	c,acc.7
-	mov	ATTXBreakF,c
-
-	; ignore make/break bit 7
-	anl	a,#7fh
-
-	; check 2-byte scancodes
-	mov	r4,a
-	mov	dptr,#Sun2ATxlte0
-	movc	a,@a+dptr
-	mov	c,acc.0
-	mov	ATTXMasqF,c
-	mov	a,r4
-
-	; get AT scancode
-	mov	dptr,#Sun2ATxlt0
-	movc	a,@a+dptr
-	ret
-
-;----------------------------------------------------------
 ; ring buffer insertion helper. Input Data comes in r2
 ;----------------------------------------------------------
 RingBufCheckInsert:
@@ -589,35 +563,55 @@ RingBufFull:
 ;----------------------------------------------------------
 ; Get received data and translate it into the ring buffer
 ;----------------------------------------------------------
-TranslateToBuf:
+TranslateToBufSun:
 	; translate from Sun to AT scancode
 	mov	a,RawBuf
-	call	Sun2AT
+
+	; save make/break bit 7
+	mov	c,acc.7
+	mov	ATTXBreakF,c
+
+	; ignore make/break bit 7
+	anl	a,#7fh
+
+	; check 2-byte scancodes
+	mov	r4,a
+	mov	dptr,#Sun2ATxlte0
+	movc	a,@a+dptr
+	mov	c,acc.0
+	mov	ATTXMasqF,c
+	mov	a,r4
+
+	; get AT scancode
+	mov	dptr,#Sun2ATxlt0
+	movc	a,@a+dptr
+
+	; save AT scancode
 	mov	OutputBuf,a
 
 	; clear received data flag
 	clr	MiscRXCompleteF
 
 	; keyboard disabled?
-	jb	ATKbdDisableF,TranslateToBufEnd
+	jb	ATKbdDisableF,TranslateToBufSunEnd
 
 	; check for 0xE0 escape code
-	jnb	ATTXMasqF,TranslateToBufNoEsc
+	jnb	ATTXMasqF,TranslateToBufSunNoEsc
 	mov	r2,#0E0h
 	call	RingBufCheckInsert
 
-TranslateToBufNoEsc:
+TranslateToBufSunNoEsc:
 	; check for 0xF0 release / break code
-	jnb	ATTXBreakF,TranslateToBufNoRelease
+	jnb	ATTXBreakF,TranslateToBufSunNoRelease
 	mov	r2,#0F0h
 	call	RingBufCheckInsert
 
-TranslateToBufNoRelease:
+TranslateToBufSunNoRelease:
 	; normal data byte
 	mov	r2, OutputBuf
 	call	RingBufCheckInsert
 
-TranslateToBufEnd:
+TranslateToBufSunEnd:
 	ret
 
 ;----------------------------------------------------------
@@ -901,7 +895,7 @@ timer0_long_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.2 2006/11/27 22:23:36 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.3 2006/11/30 10:00:11 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -969,7 +963,7 @@ LoopProcessSunData:
 LoopProcessSunDataNot7f:
 	jb	ATCmdResetF, Loop
 	setb	MiscRXCompleteF
-	call	TranslateToBuf
+	call	TranslateToBufSun
 	sjmp	Loop
 
 ; -----------------
