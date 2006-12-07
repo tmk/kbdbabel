@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; PC/XT to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.32 2006/11/30 10:30:17 akurz Exp $
+; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.34 2006/12/05 23:43:51 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz or 18.432MHz.
 ; Note: PC/XT data bits are sampled on negative clock slope.
@@ -465,9 +465,9 @@ timerTXStartBit:
 	jnb	p3.3,timerTXClockBusy	; 2
 	nop
 	clr	p3.5			; 1	; Data Startbit
-	nop
-	nop
-	nop
+
+	call	nop10
+
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
 
@@ -478,9 +478,9 @@ timerTXDataBit:
 	rrc	a			; 1	; next data bit to c
 	mov	p3.5,c			; 2
 	mov	TXBuf,a			; 1
-	nop
-	nop
-	nop
+
+	call	nop10
+
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd
 
@@ -490,9 +490,9 @@ timerTXParityBit:
 	nop
 	mov	c,ATTXParF		; 1	; parity bit
 	mov	p3.5,c			; 2
-	nop
-	nop
-	nop
+
+	call	nop10
+
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
 
@@ -503,22 +503,18 @@ timerTXStopBit:
 	nop
 	nop
 	setb	p3.5			; 1	; Data Stopbit
-	nop
-	nop
-	nop
+
+	call	nop10
+
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
 
 ; -----------------
 timerTXClockRelease:
 ; -- release clock line
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
+
+	call	nop20
+
 	mov	a,ATBitCount		; 1
 	setb	p3.3			; 1
 	cjne	a,#21,timerTXCheckBusy	; 2
@@ -911,13 +907,14 @@ ATCPNotF0:
 	cjne	a,#0f1h,ATCPNotF1
 	sjmp	ATCPSendAck
 ATCPNotF1:
-	; -- command 0xf2: keyboard model detection. send ACK,xab,x41
+	; -- command 0xf2: keyboard model detection. send ACK,xab,x83
 	cjne	a,#0f2h,ATCPNotF2
 	mov	r2,#0FAh
 	call	RingBufCheckInsert
 	mov	r2,#0ABh
 	call	RingBufCheckInsert
-	mov	r2,#041h
+	; keyboard model MF2: x41h, PS2: x83h
+	mov	r2,#083h
 	call	RingBufCheckInsert
 	sjmp	ATCPDone
 ATCPNotF2:
@@ -966,6 +963,54 @@ ATCPSendAck:
 ;	sjmp	ATCPDone
 
 ATCPDone:
+	ret
+
+;----------------------------------------------------------
+; helper, waste 10 cpu cycles
+; note: call and return takes 4 cycles
+;----------------------------------------------------------
+nop10:
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	ret
+
+;----------------------------------------------------------
+; helper, waste 20 cpu cycles
+; note: call and return takes 4 cycles
+;----------------------------------------------------------
+nop20:
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
 	ret
 
 ;----------------------------------------------------------
@@ -1030,7 +1075,7 @@ timer0_diag_init:
 ;----------------------------------------------------------
 ; init timer 0 in 16 bit mode for faked POST delay of of 20ms
 ;----------------------------------------------------------
-timer0_long_init:
+timer0_20ms_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all upper bits
 	orl	tmod, #01h;	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
@@ -1045,7 +1090,7 @@ timer0_long_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.1 2006/11/30 10:38:00 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.2 2006/12/07 00:16:26 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1053,6 +1098,18 @@ RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.1 2006/11/30 10:38:00 akurz Exp $"
 Start:
 	; -- init the stack
 	mov	sp,#StackBottom
+
+	; -- enable interrupts
+	setb	ea
+
+	; -- some delay of 500ms to eleminate stray data sent by the PC/XT-Keyboard on power-up
+	mov	r0,#25
+InitResetDelayLoop:
+	call	timer0_20ms_init
+InitResetDelay:
+	jb	MiscSleepF,InitResetDelay
+	djnz	r0,InitResetDelayLoop
+
 	; -- init UART and timer0/1
 ;	acall	uart_timer2_init
 	acall	timer1_init
@@ -1061,7 +1118,6 @@ Start:
 	; -- enable interrupts int0
 	setb	ex0		; external interupt 0 enable
 	setb	it0		; falling edge trigger for int 0
-	setb	ea
 
 	; -- clear all flags
 	mov	20h,#0
@@ -1150,7 +1206,7 @@ LoopSendData:
 	clr	ATCmdResetF
 	; -- optional delay after faked cold start
 	; yes, some machines will not boot without this, e.g. IBM PS/ValuePoint 433DX/D
-	call	timer0_long_init
+	call	timer0_20ms_init
 LoopTXResetDelay:
 	jb	MiscSleepF,LoopTXResetDelay
 	# -- send "self test passed"
