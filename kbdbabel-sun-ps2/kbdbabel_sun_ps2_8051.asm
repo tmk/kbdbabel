@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Sun to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.5 2006/11/30 09:55:09 akurz Exp $
+; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.6 2006/12/08 15:41:29 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ; alternatively 18.432MHz and 14.7456 may be used.
@@ -121,20 +121,23 @@ uart_t2h_9600_18432k		equ	255
 uart_t2l_9600_18432k		equ	196
 
 ;------------------ AT scancode timing intervals generated with timer 0 in 8 bit mode
-; 50mus@11.0592MHz -> th0 and tl0=209 or 46 processor cycles	; (256-11059.2*0.05/12)
-interval_t0_50u_11059_2k	equ	209
+; 85mus@11.0592MHz -> th0 and tl0=178 or 78 processor cycles	; (256-11059.2*0.085/12)
+interval_t0_85u_11059_2k	equ	178
 
-; 50mus@11.0592MHz -> th0 and tl0=214 or 41 processor cycles	; (256-11059.2*0.045/12)
-interval_t0_45u_11059_2k	equ	214
+; 80mus@11.0592MHz -> th0 and tl0=183 or 73 processor cycles	; (256-11059.2*0.08/12)
+interval_t0_80u_11059_2k	equ	183
 
-; 45mus@12.000MHz -> th0 and tl0=211 or 45 processor cycles	; (256-12000*0.045/12)
-interval_t0_45u_12M		equ	211
+; 75mus@11.0592MHz -> th0 and tl0=187 or 69 processor cycles	; (256-11059.2*0.075/12)
+interval_t0_75u_11059_2k	equ	187
 
-; 40mus@18.432MHz -> th0 and tl0=194 or 61 processor cycles	; (256-18432*0.04/12)
-interval_t0_40u_18432k		equ	194
+; 80mus@12.000MHz -> th0 and tl0=176 or 80 processor cycles	; (256-12000*0.08/12)
+interval_t0_45u_12M		equ	176
 
-; 40mus@24.000MHz -> th0 and tl0=176 or 80 processor cycles	; (256-24000*0.04/12)
-interval_t0_40u_24M		equ	176
+; 80mus@18.432MHz -> th0 and tl0=134 or 122 processor cycles	; (256-18432*0.08/12)
+interval_t0_40u_18432k		equ	134
+
+; 80mus@24.000MHz -> th0 and tl0=96 or 160 processor cycles	; (256-24000*0.08/12)
+interval_t0_40u_24M		equ	96
 
 ;------------------ AT RX timeout values using timer 0 in 16 bit mode
 ; --- 18.432MHz
@@ -266,13 +269,13 @@ timerAsClockTimer:
 timerDevToHost:
 ; -- switch on bit-number
 ; -----------------
-	jb	ATBitCount.0,timerTXClockRelease	; 2,10
-	mov	dptr,#timerDevToHostJT		; 2,12
-	mov	a,ATBitCount			; 1,13
-	jmp	@a+dptr				; 2,15
+	mov	dptr,#timerDevToHostJT		; 2,10
+	mov	a,ATBitCount			; 1,11
+	rl	a				; 1,12
+	jmp	@a+dptr				; 2,14
 
 timerDevToHostJT:
-	sjmp	timerTXStartBit		; 2,17
+	sjmp	timerTXStartBit		; 2,16
 	sjmp	timerTXDataBit
 	sjmp	timerTXDataBit
 	sjmp	timerTXDataBit
@@ -291,11 +294,9 @@ timerTXStartBit:
 	jnb	p3.3,timerTXClockBusy	; 2
 	nop
 	clr	p3.5			; 1	; Data Startbit
-	nop
-	nop
-	nop
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerTXEnd		; 2
+	sjmp	timerTXClockRelease	; 2
 
 ; -----------------
 timerTXDataBit:
@@ -304,11 +305,9 @@ timerTXDataBit:
 	rrc	a			; 1	; next data bit to c
 	mov	p3.5,c			; 2
 	mov	TXBuf,a			; 1
-	nop
-	nop
-	nop
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerTXEnd
+	sjmp	timerTXClockRelease	; 2
 
 ; -----------------
 timerTXParityBit:
@@ -316,11 +315,9 @@ timerTXParityBit:
 	nop
 	mov	c,ATTXParF		; 1	; parity bit
 	mov	p3.5,c			; 2
-	nop
-	nop
-	nop
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerTXEnd		; 2
+	sjmp	timerTXClockRelease	; 2
 
 ; -----------------
 timerTXStopBit:
@@ -329,25 +326,17 @@ timerTXStopBit:
 	nop
 	nop
 	setb	p3.5			; 1	; Data Stopbit
-	nop
-	nop
-	nop
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerTXEnd		; 2
+	sjmp	timerTXClockRelease	; 2
 
 ; -----------------
 timerTXClockRelease:
 ; -- release clock line
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
+	call	ATTX_delay_release
 	mov	a,ATBitCount		; 1
+	cjne	a,#10,timerTXCheckBusy	; 2
 	setb	p3.3			; 1
-	cjne	a,#21,timerTXCheckBusy	; 2
 	setb	p1.2			; diag: data send
 	; end of TX sequence, not time critical
 	sjmp	timerTXStop
@@ -355,6 +344,7 @@ timerTXClockRelease:
 timerTXCheckBusy:
 ; -- check if clock is released, but not after the stop bit.
 ; -- Host may pull down clock to abort communication at any time.
+	setb	p3.3			; 1
 	jb	p3.3,timerTXEnd
 
 timerTXClockBusy:
@@ -383,12 +373,12 @@ timerTXEnd:				; total 7
 timerHostToDev:
 ; -- switch on bit-number
 ; -----------------
-	jb	ATBitCount.0,timerRXClockRelease	; 2,10
-	mov	dptr,#timerHostToDevJT		; 2,12
-	mov	a,ATBitCount			; 1,13
-	jmp	@a+dptr				; 2,15
+	mov	dptr,#timerHostToDevJT		; 2,10
+	mov	a,ATBitCount			; 1,11
+	rl	a				; 1,12
+	jmp	@a+dptr				; 2,14
 timerHostToDevJT:
-	sjmp	timerRXStartBit		; 2,17
+	sjmp	timerRXStartBit		; 2,16
 	sjmp	timerRXDataBit
 	sjmp	timerRXDataBit
 	sjmp	timerRXDataBit
@@ -409,7 +399,7 @@ timerRXStartBit:
 
 	; pull down clock line
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd
+	sjmp	timerRXClockRelease
 
 ; -----------------
 timerRXDataBit:
@@ -422,7 +412,7 @@ timerRXDataBit:
 
 ; -- pull down clock line
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd
+	sjmp	timerRXClockRelease
 
 ; -----------------
 timerRXParityBit:
@@ -433,13 +423,13 @@ timerRXParityBit:
 	jnb	p3.5,timerRXClockBusy		; parity error
 ; -- pull down clock line
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd
+	sjmp	timerRXClockRelease
 
 timerRXParityBitPar:
 	jb	p3.5,timerRXClockBusy		; parity error
 ; -- pull down clock line
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd
+	sjmp	timerRXClockRelease
 
 ; -----------------
 timerRXAckBit:
@@ -449,11 +439,9 @@ timerRXAckBit:
 
 	; ACK-Bit
 	clr	p3.5			; 1
-	nop
-	nop
-	nop
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd		; 2
+	sjmp	timerRXClockRelease	; 2
 
 ; -----------------
 timerRXCleanup:
@@ -471,18 +459,17 @@ timerRXCleanup:
 ; -----------------
 timerRXClockRelease:
 ; -- release clock line
-	nop
-	nop
-	nop
+	call	ATTX_delay_release
 	mov	a,ATBitCount		; 1
+	cjne	a,#10,timerRXCheckBusy
 	setb	p3.3			; 1
-	cjne	a,#21,timerRXCheckBusy
 	setb	p1.1			; diag: host-do-dev ok
 	sjmp	timerRXEnd
 
 timerRXCheckBusy:
 ; -- check if clock is released, but not after the last bit.
 ; -- Host may pull down clock to abort communication at any time.
+	setb	p3.3			; 1
 	jb	p3.3,timerRXEnd
 
 timerRXClockBusy:
@@ -756,13 +743,13 @@ ATCPNotF0:
 	cjne	a,#0f1h,ATCPNotF1
 	sjmp	ATCPSendAck
 ATCPNotF1:
-	; -- command 0xf2: keyboard model detection. send ACK,xab,x41
+	; -- command 0xf2: keyboard model detection. send ACK,xab,x83
 	cjne	a,#0f2h,ATCPNotF2
 	mov	r2,#0FAh
 	call	RingBufCheckInsert
 	mov	r2,#0ABh
 	call	RingBufCheckInsert
-	mov	r2,#041h
+	mov	r2,#083h
 	call	RingBufCheckInsert
 	sjmp	ATCPDone
 ATCPNotF2:
@@ -814,6 +801,54 @@ ATCPDone:
 	ret
 
 ;----------------------------------------------------------
+; helper: delay clock line status change for 10 microseconds
+; FIXME: this is X-tal frequency dependant
+;----------------------------------------------------------
+ATTX_delay_clk:
+	nop
+	nop
+	nop
+	nop
+
+	ret
+
+;----------------------------------------------------------
+; helper: delay clock release
+; FIXME: this is X-tal frequency dependant
+;----------------------------------------------------------
+ATTX_delay_release:
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	ret
+
+;----------------------------------------------------------
 ; init uart with timer 2 as baudrate generator
 ; note: this timer is not present on the AT89C2051
 ;----------------------------------------------------------
@@ -847,14 +882,14 @@ uart_timer1_init:
 
 ;----------------------------------------------------------
 ; init timer 0 for interval timing (fast 8 bit reload)
-; need 40-50mus intervals
+; need 75-85mus intervals
 ;----------------------------------------------------------
 timer0_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #02h;	; 8-bit Auto-Reload Timer, mode 2
-	mov	th0, #interval_t0_45u_11059_2k
-	mov	tl0, #interval_t0_45u_11059_2k
+	mov	th0, #interval_t0_85u_11059_2k
+	mov	tl0, #interval_t0_85u_11059_2k
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	setb	ATTFModF	; see timer 0 interrupt code
 	clr	ATCommAbort	; communication abort flag
@@ -880,7 +915,7 @@ timer0_diag_init:
 ;----------------------------------------------------------
 ; init timer 0 in 16 bit mode for faked POST delay of of 20ms
 ;----------------------------------------------------------
-timer0_long_init:
+timer0_20ms_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all upper bits
 	orl	tmod, #01h;	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
@@ -895,7 +930,7 @@ timer0_long_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.3 2006/11/30 10:00:11 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.4 2006/12/08 15:51:01 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1011,7 +1046,7 @@ LoopSendData:
 	clr	ATCmdResetF
 	; -- optional delay of 20ms after faked cold start
 	; yes, some machines will not boot without this, e.g. IBM PS/ValuePoint 433DX/D
-	call	timer0_long_init
+	call	timer0_20ms_init
 LoopTXResetDelay:
 	jb	MiscSleepF,LoopTXResetDelay
 	# -- send "self test passed"
