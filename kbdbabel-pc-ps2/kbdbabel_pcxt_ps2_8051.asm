@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; PC/XT to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.34 2006/12/05 23:43:51 akurz Exp $
+; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.36 2007/04/17 06:59:29 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz or 18.432MHz.
 ; Note: PC/XT data bits are sampled on negative clock slope.
@@ -55,7 +55,7 @@ PCRXActiveF	bit	20h.2	; receive in progress flag
 ATTXBreakF	bit	20h.3	; Release/Break-Code flag
 ATTXMasqF	bit	20h.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
 ATTXParF	bit	20h.5	; TX-AT-Parity bit
-ATTFModF	bit	20h.6	; Timer modifier: alarm clock or clock driver
+TFModF		bit	20h.6	; Timer modifier: alarm clock or clock driver
 MiscSleepF	bit	20h.7	; sleep timer active flag
 ATCommAbort	bit	21h.0	; AT communication aborted
 ATHostToDevIntF	bit	21h.1	; host-do-device init flag triggered by ex1 / unused.
@@ -262,7 +262,7 @@ interCharTestEnd:
 
 ; --------------------------- get and save clock timings
 ; this is an optional extra-check for the received data.
-; The PC/XT-Protocol consists of 9 euqally spaced clock cycles proceeded by
+; The PC/XT-Protocol consists of 8 equally spaced clock cycles proceeded by
 ; one clock cycle of double length. These intervals are checked here.
 ; For diagnosis purposes the timing samples can be send via serial line.
 ; -- diag: time interval buffer address KbClockIntBuf
@@ -397,9 +397,9 @@ HandleInt1:
 
 ;----------------------------------------------------------
 ; timer 0 int handler used for different purposes
-; depending on ATTFModF and ATHostToDevF
+; depending on TFModF and ATHostToDevF
 ;
-; ATTFModF=0:
+; TFModF=0:
 ; timer is used as 16-bit alarm clock.
 ; Stop the timer after overflow, cleanup RX buffers
 ; and clear MiscSleepF
@@ -407,21 +407,21 @@ HandleInt1:
 ;   0c0h,00h -> 10ms, 0e0h,00h -> 5ms, 0fah,00h -> 1ms
 ;   0fbh,0cdh -> 0.7ms, 0ffh,039h -> 0.12ms
 ;
-; ATTFModF=1:
+; TFModF=1:
 ; timer is used in 8-bit-auto-reload-mode to generate
 ; the AT scancode clock with 2x40 microseconds timings.
 ; 40mus@18.432MHz -> th0 and tl0=0c3h or 61 processor cycles.
 ;
-; ATTFModF=1, ATHostToDevF=0:
+; TFModF=1, ATHostToDevF=0:
 ; device-to-host communication: send datagrams on the AT line.
 ; Each run in this mode will take 36 processor cycles.
 ; Extra nops between Data and Clock bit assignment for signal stabilization.
 ;
-; ATTFModF=1, ATHostToDevF=1:
+; TFModF=1, ATHostToDevF=1:
 ; host-do-device communication: receive datagrams on the AT line.
 ;----------------------------------------------------------
 HandleTF0:
-	jb	ATTFModF,timerAsClockTimer	; 2,2
+	jb	TFModF,timerAsClockTimer	; 2,2
 
 ; --------------------------- timer is used as 16-bit alarm clock
 timerAsAlarmClock:
@@ -536,7 +536,7 @@ timerTXClockBusy:
 ; -----------------
 timerTXStop:
 ; -- stop timer auto-reload
-	clr	ATTFModF
+	clr	TFModF
 	clr	tr0
 	setb	p3.5			; just for safety, clean up data line state
 ;	sjmp	timerTXEnd
@@ -628,7 +628,7 @@ timerRXAckBit:
 ; -----------------
 timerRXCleanup:
 ; -- end of RX clock sequence after 12 clock pulses
-	clr	ATTFModF
+	clr	TFModF
 
 ; -- release the data line
 	setb	p3.5
@@ -660,7 +660,7 @@ timerRXClockBusy:
 	setb	ATCommAbort		; AT communication aborted flag
 	clr	p1.1			; diag: host-do-dev abort
 
-	clr	ATTFModF
+	clr	TFModF
 	clr	tr0
 	setb	p3.5			; just for safety, clean up data line state
 ;	sjmp	timerRXEnd
@@ -815,7 +815,7 @@ BufTX:
 
 	; -- wait for completion
 BufTXWaitSent:
-	jb	ATTFModF,BufTXWaitSent
+	jb	TFModF,BufTXWaitSent
 ;	setb	ex1		; enable external interupt 1
 ;	setb	ex0		; enable external interupt 0
 	clr	ATTXActiveF		; diag
@@ -1051,7 +1051,7 @@ timer0_init:
 	mov	th0, #interval_t0_40u_24M
 	mov	tl0, #interval_t0_40u_24M
 	setb	et0		; (IE.1) enable timer 0 interrupt
-	setb	ATTFModF	; see timer 0 interrupt code
+	setb	TFModF		; see timer 0 interrupt code
 	clr	ATCommAbort	; communication abort flag
 	mov	ATBitCount,#0
 	setb	tr0		; go
@@ -1067,7 +1067,7 @@ timer0_diag_init:
 	mov	th0, #interval_th_128u_24M
 	mov	tl0, #interval_tl_128u_24M
 	setb	et0		; (IE.1) enable timer 0 interrupt
-	clr	ATTFModF	; see timer 0 interrupt code
+	clr	TFModF		; see timer 0 interrupt code
 	setb	MiscSleepF
 	setb	tr0		; go
 	ret
@@ -1082,7 +1082,7 @@ timer0_20ms_init:
 	mov	th0, #interval_th_20m_24M
 	mov	tl0, #interval_tl_20m_24M
 	setb	et0		; (IE.1) enable timer 0 interrupt
-	clr	ATTFModF	; see timer 0 interrupt code
+	clr	TFModF		; see timer 0 interrupt code
 	setb	MiscSleepF
 	setb	tr0		; go
 	ret
@@ -1090,7 +1090,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.2 2006/12/07 00:16:26 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.3 2007/04/17 07:05:26 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1140,7 +1140,7 @@ Loop:
 	jb	ATCmdReceivedF,LoopProcessATcmd
 
 	; -- check if AT communication active.
-	jb	ATTFModF,Loop
+	jb	TFModF,Loop
 
 	; -- delay flag
 ;	jb	MiscSleepF,Loop
@@ -1182,7 +1182,7 @@ LoopATRX:
 
 	; wait for completion
 LoopTXWaitSent:
-	jb	ATTFModF,LoopTXWaitSent
+	jb	TFModF,LoopTXWaitSent
 LoopCheckATEnd:
 	ljmp	Loop
 
