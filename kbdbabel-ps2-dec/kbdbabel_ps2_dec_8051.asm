@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; AT/PS2 to DEC LK201/LK401 keyboard transcoder for 8051 type processors.
 ;
-; $Id: kbdbabel_ps2_dec_8051.asm,v 1.5 2007/04/25 07:16:04 akurz Exp $
+; $KbdBabel: kbdbabel_ps2_dec_8051.asm,v 1.7 2007/04/25 08:29:29 akurz Exp $
 ;
 ; Clock/Crystal: 18.432MHz.
 ; 3.6864MHz or 7.3728 may do as well.
@@ -526,7 +526,7 @@ ATPS22DECxlt3	DB	 00h, 0deh, 0d9h, 0ddh, 0d8h, 0dch, 0dbh,  00h,   00h,  00h, 0e
 ATPS22DECxlt4	DB	 00h, 0e8h, 0e7h, 0e6h, 0ebh, 0efh, 0eah,  00h,   00h, 0edh, 0f3h, 0ech, 0f2h, 0f0h, 0f9h,  00h
 ATPS22DECxlt5	DB	 00h,  00h, 0fbh,  00h, 0fah, 0f5h,  00h,  00h,  0b0h, 0abh, 0bdh, 0f6h,  00h, 0f7h,  00h,  00h
 ATPS22DECxlt6	DB	 00h, 0c9h,  00h,  00h,  00h,  00h, 0bch,  00h,   00h, 096h,  00h, 099h, 09dh,  00h,  00h,  00h
-ATPS22DECxlt7	DB	092h, 094h, 097h, 09ah, 09bh, 09eh, 0bfh, 0adh,  071h,  00h, 098h, 0a0h,  00h, 09fh,  00h,  00h
+ATPS22DECxlt7	DB	092h, 094h, 097h, 09ah, 09bh, 09eh, 0fbh, 0adh,  071h,  00h, 098h, 0a0h,  00h, 09fh,  00h,  00h
 ATPS22DECxlt8	DB	 00h,  00h,  00h, 065h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxlt9	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxlta	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -1157,7 +1157,7 @@ timer0_init_1ms:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_ps2_dec_8051.asm,v 1.5 2007/04/25 07:16:04 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_ps2_dec_8051.asm,v 1.6 2007/04/25 08:54:33 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
