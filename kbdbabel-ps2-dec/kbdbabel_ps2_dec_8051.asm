@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; AT/PS2 to DEC LK201/LK401 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_ps2_dec_8051.asm,v 1.5 2007/04/24 23:59:07 akurz Exp $
+; $Id: kbdbabel_ps2_dec_8051.asm,v 1.5 2007/04/25 07:16:04 akurz Exp $
 ;
 ; Clock/Crystal: 18.432MHz.
 ; 3.6864MHz or 7.3728 may do as well.
@@ -540,7 +540,7 @@ ATPS22DECxltf	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  0
 ; AT/PS2 to DEC LK translaton table for 0xE0-Escaped scancodes
 ;----------------------------------------------------------
 ATPS22DECxltE0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-ATPS22DECxltE1	DB	 00h,  00h,  00h,  00h, 0afh,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
+ATPS22DECxltE1	DB	 00h, 0b2h,  00h,  00h, 0afh,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxltE2	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxltE3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxltE4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -700,10 +700,10 @@ TranslateToBufNot14:
 	mov	LKModAL,c
 	sjmp	TranslateToBufModCode
 TranslateToBufNot11:
-	cjne	a,#058h,TranslateToBufNot58	; CapsLock
-	clr	PS2RXBreakF
-	sjmp	TranslateToBufNormalCode
-TranslateToBufNot58:
+;	cjne	a,#058h,TranslateToBufNot58	; CapsLock
+;	clr	PS2RXBreakF
+;	sjmp	TranslateToBufNormalCode
+;TranslateToBufNot58:
 	sjmp	TranslateToBufNormalCode
 
 TranslateToBufSpecialEsc:
@@ -766,6 +766,9 @@ TranslateToBufNoGo:
 	; --- translate
 	clr	PS2RXCompleteF
 	call	ATPS22DEC
+
+	; --- dont insert zeros
+	jz	TranslateToBufEnd
 
 	; --- insert
 TranslateToBufInsert:
@@ -1003,12 +1006,12 @@ DECCPNot0A:
 	; -- command 0x11: LED off
 	cjne	a,#11h,DECCPNot11
 	setb	LKCmdLedOffF		; LED bit mask follows as next argument
-	sjmp	DECCPSendAck
+	sjmp	DECCPDone
 DECCPNot11:
 	; -- command 0x13: LED off
 	cjne	a,#13h,DECCPNot13
 	setb	LKCmdLedOnF		; LED bit mask follows as next argument
-	sjmp	DECCPSendAck
+	sjmp	DECCPDone
 DECCPNot13:
 	; -- command 0x1A
 	cjne	a,#1Ah,DECCPNot1A
@@ -1019,12 +1022,12 @@ DECCPNot1A:
 	setb	LKCmdVolF		; Volume follows as next argument
 	setb	LKKeyClickF
 	setb	p3.7
-	sjmp	DECCPSendAck
+	sjmp	DECCPDone
 DECCPNot1B:
 	; -- command 0x23: enable bell
 	cjne	a,#023h,DECCPNot23
 	;clr	p1.@1
-	sjmp	DECCPSendAck
+	sjmp	DECCPDone
 DECCPNot23:
 	; -- command 0x3A
 	cjne	a,#3Ah,DECCPNot3A
@@ -1058,7 +1061,7 @@ DECCPNot78:
 	cjne	a,#99h,DECCPNot99
 	clr	LKKeyClickF
 	clr	p3.7
-	sjmp	DECCPSendAck
+	sjmp	DECCPDone
 DECCPNot99:
 	; -- command 0xa1: disable bell
 	cjne	a,#0A1h,DECCPNotA1
@@ -1067,7 +1070,7 @@ DECCPNot99:
 DECCPNotA1:
 	; -- command 0xa7: sound bell
 	cjne	a,#0A7h,DECCPNotA7
-	sjmp	DECCPSendAck
+	sjmp	DECCPDone
 DECCPNotA7:
 	sjmp	DECCPDone
 
@@ -1154,7 +1157,7 @@ timer0_init_1ms:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_ps2_dec_8051.asm,v 1.4 2007/04/25 00:09:27 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_ps2_dec_8051.asm,v 1.5 2007/04/25 07:16:04 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
