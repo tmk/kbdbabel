@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; AT/PS2 to DEC LK201/LK401 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_ps2_dec_8051.asm,v 1.3 2007/04/18 21:50:49 akurz Exp $
+; $KbdBabel: kbdbabel_ps2_dec_8051.asm,v 1.5 2007/04/24 23:59:07 akurz Exp $
 ;
 ; Clock/Crystal: 18.432MHz.
 ; 3.6864MHz or 7.3728 may do as well.
@@ -55,10 +55,14 @@ PS2RXBitF	bit	20h.0	; RX-bit-buffer
 PS2RXCompleteF	bit	20h.1	; full and correct byte-received
 PS2ActiveF	bit	20h.2	; PS2 RX or TX in progress flag
 PS2HostToDevF	bit	20h.3	; host-to-device flag for Int0-handler
-PS2RXBreakF	bit	20h.5	; AT/PS2 0xF0 Break scancode received
-PS2RXEscapeF	bit	20h.6	; AT/PS2 0xE0 Escape scancode received
-PS2TXAckF	bit	20h.7
+PS2RXBreakF	bit	20h.4	; AT/PS2 0xF0 Break scancode received
+PS2RXEscapeF	bit	20h.5	; AT/PS2 0xE0 Escape scancode received
+PS2TXAckF	bit	20h.6	; ACK-Bit on host-to-dev
+PS2RXAckF	bit	20h.7	; ACK-Scancode received
 MiscSleepF	bit	21h.0	; sleep timer active flag
+TFModF		bit	21h.1	; Timer modifier: PS2 timeout or alarm clock
+TimeoutF	bit	21h.2	; Timeout occured
+PS2ResendF	bit	21h.3	; AT/PS2 resend
 LKCmdLedOffF	bit	22h.2	; wait for LED-Turn-Off Argument
 LKCmdLedOnF	bit	22h.3	; wait for LED-Turn-On Argument
 LKCmdVolF	bit	22h.4	; wait for Volume Argument
@@ -76,22 +80,28 @@ KbBitBufH	equ	25h
 ;KbClockMin	equ	26h
 ;KbClockMax	equ	27h
 PS2TXBitBuf	equ	28h
-LKModBuf	equ	29h	; translated received modifier codes
+PS2ResendBuf	equ	29h
 RawBuf		equ	30h	; raw PC/XT scancode
-;OutputBuf	equ	31h	; AT scancode
+PS2ResendTTL	equ	31h	; prevent resent-loop
 TXBuf		equ	32h	; AT scancode TX buffer
-RingBufPtrIn	equ	33h	; Ring Buffer write pointer, starting with zero
-RingBufPtrOut	equ	34h	; Ring Buffer read pointer, starting with zero
-DECRXBuf	equ	35h	; DEC host-to-dev buffer
-DECLedBuf	equ	36h	; LED state buffer
-PS2RXLastBuf	equ	37h	; Last received scancode
+RingBuf1PtrIn	equ	33h	; Ring Buffer write pointer, starting with zero
+RingBuf1PtrOut	equ	34h	; Ring Buffer read pointer, starting with zero
+RingBuf2PtrIn	equ	35h	; Ring Buffer write pointer, starting with zero
+RingBuf2PtrOut	equ	36h	; Ring Buffer read pointer, starting with zero
+DECRXBuf	equ	37h	; DEC host-to-dev buffer
+DECLedBuf	equ	38h	; LED state buffer
+PS2RXLastBuf	equ	39h	; Last received scancode
+LKModBuf	equ	3ah	; translated received modifier codes
+PS2LedBuf	equ	3bh	; LED state buffer for PS2 Keyboard
 
 ;------------------ arrays
-RingBuf		equ	40h
-RingBufSizeMask	equ	0fh	; 16 byte ring-buffer size
+RingBuf1		equ	40h
+RingBuf1SizeMask	equ	0fh	; 16 byte ring-buffer size
+RingBuf2		equ	50h
+RingBuf2SizeMask	equ	0fh	; 16 byte ring-buffer size
 
 ;------------------ stack
-StackBottom	equ	50h	; the stack
+StackBottom	equ	60h	; the stack
 
 ;----------------------------------------------------------
 ; misc constants
@@ -159,6 +169,10 @@ interval_tl_1m_18432k		equ	0
 ; 0.13ms@18.432MHz -> th0,tl0=0ffh,38h	; (65536-18432*0.13/12)
 interval_th_130u_18432k		equ	255
 interval_tl_130u_18432k		equ	56
+
+; 40mus@18.432MHz -> th0,tl0=0ffh,C3h	; (256-18432*0.04/12) (65536-18432*0.04/12)
+interval_th_40u_18432k		equ	255
+interval_tl_40u_18432k		equ	194
 
 ; --- 11.0592MHz
 ; 20ms@11.0592MHz -> th0,tl0=0b8h,00h	; (65536-11059.2*20/12)
@@ -284,7 +298,7 @@ HandleInt0:
 	jb	PS2HostToDevF,Int0PS2TX
 
 ; --------------------------- AT/PS2 RX: get and save data samples
-;	clr	p3.7	; buzzer off
+;	clr	p1.3
 ; -- write to mem, first 8 bits
 	mov	c,PS2RXBitF	; new bit
 	mov	a,KbBitBufL
@@ -296,7 +310,8 @@ HandleInt0:
 	rrc	a
 	mov	KbBitBufH,a
 
-; -- diag: write data bits to LED-Port
+; -- diag: write byte count or data bits to LED-Port
+;	mov	a,r7
 ;	mov	a,KbBitBufL
 ;	xrl	a,0FFh
 ;	mov	p1,a
@@ -307,17 +322,20 @@ HandleInt0:
 ; --------------------------- consistancy checks
 ; -- checks by bit number
 	mov	a,r7
-;	jz	Int0StartBit	; start bit
+	jnz	Int0NotStartBit	; start bit
+Int0NotStartBit:
 	clr	c
 	subb	a,#0ah
 	jz	Int0LastBit
 
 ; -- inc the bit counter
 	inc	r7
-	sjmp	Int0Return
+	ljmp	Int0Return
 
 ; -- special handling for last bit: output
 Int0LastBit:
+;	clr	p1.2
+
 	; start-bit must be 0
 	jb	KbBitBufH.5, Int0Error
 	; stop-bit must be 1
@@ -348,7 +366,7 @@ Int0LastBit:
 
 Int0RXParityBitPar:
 	jc	Int0ParityError
-	
+
 Int0Output:
 	; -- return received byte
 	jnb	LKKeyClickF,Int0OutputNoClick
@@ -359,6 +377,11 @@ Int0OutputNoClick:
 	mov	r7,#0
 	setb	PS2RXCompleteF	; fully received flag
 	clr	PS2ActiveF	; receive in progress flag
+
+;	; --- write to LED
+;	xrl	a,0FFh
+;	mov	p1,a
+
 	sjmp	Int0Return
 
 Int0ParityError:
@@ -366,7 +389,7 @@ Int0ParityError:
 	mov	KbBitBufL,#0
 	mov	KbBitBufH,#0
 	mov	r7,#0
-	clr	p1.2		; error LED on
+	clr	p1.2
 	sjmp	Int0Return
 
 Int0Error:
@@ -374,32 +397,49 @@ Int0Error:
 	mov	KbBitBufL,#0
 	mov	KbBitBufH,#0
 	mov	r7,#0
-	clr	p1.3		; error LED on
+	clr	p1.3
 	sjmp	Int0Return
 
 ; --------------------------- AT/PS2 TX
 Int0PS2TX:
+;	clr	p1.4
+	; -- reset RX bit buffer
+	clr	PS2RXBitF
 	setb	PS2TXAckF
+;	setb	p1.5
 ; -- checks by bit number
 	mov	a,r7
+	jz	Int0PS2TXStart
 	clr	c
-	subb	a,#08h
+	subb	a,#09h
 	jc	Int0PS2TXData
 	jz	Int0PS2TXPar
 	dec	a
 	jz	Int0PS2TXStop
-	; --- read ACK-bit
-	mov	c,p3.2
+
+	; --- the last bit. read ACK-bit
+	mov	c,p3.4
 	mov	PS2TXAckF,c
-	mov	r7,#0
+;	mov	p1.5,c
+
+	; --- reset data and clock
+	mov	r7,#0h
+	clr	p3.2		; pull down clock
+	setb	p3.4		; data
 	clr	PS2ActiveF	; receive in progress flag
+	clr	PS2HostToDevF
+	sjmp	Int0Return
+
+Int0PS2TXStart:
+	; --- set start bit
+	clr	p3.4
 	sjmp	Int0PS2TXReturn
 
 Int0PS2TXData
 	; --- set data bit
 	mov	a,PS2TXBitBuf
 	mov	c,acc.0
-	mov	p3.2,c
+	mov	p3.4,c
 	rr	a
 	mov	PS2TXBitBuf,a
 	sjmp	Int0PS2TXReturn
@@ -408,12 +448,13 @@ Int0PS2TXPar:
 	; --- set parity bit
 	mov	a,PS2TXBitBuf
 	mov	c,p
-	mov	p3.2,c
+	cpl	c
+	mov	p3.4,c
 	sjmp	Int0PS2TXReturn
 
 Int0PS2TXStop:
 	; --- set stop bit
-	setb	p3.2
+	setb	p3.4
 	sjmp	Int0PS2TXReturn
 
 Int0PS2TXReturn:
@@ -423,48 +464,70 @@ Int0PS2TXReturn:
 
 ; --------------------------- done
 Int0Return:
+;	setb	p1.4
+;	setb	p1.2
+;	setb	p1.3
 	pop	psw
 	pop	acc
 	reti
 
 ;----------------------------------------------------------
 ; timer 0 int handler:
+;
+; TFModF=0:
 ; timer is used to measure the clock-signal-interval length
 ; Stop the timer after overflow, cleanup RX buffers
 ; RX timeout after 1 - 1.3ms
+;
+; TFModF=1: delay timer
 ;----------------------------------------------------------
 HandleTF0:
 	; stop timer
 	clr	tr0
 
+	jb	TFModF,timerAsClockTimer
+
+	; --- timer used for AT/PS2 bus timeout
 	; buzzer off
 ;	clr	p3.7
-
 	; cleanup buffers
 	mov	KbBitBufL,#0
 	mov	KbBitBufH,#0
 	mov	r7,#0
 	clr	PS2ActiveF	; receive in progress flag
+	clr	PS2HostToDevF
+	setb	TimeoutF
 
 	; reset timer value
 	mov	th0, #interval_th_11_bit
 	mov	tl0, #interval_tl_11_bit
 
+;	setb	p3.4	; data
+;	setb	p3.2	; clock
+
+	sjmp	HandleTF0End
+
+timerAsClockTimer:
+	; --- timer used to generate delays
+	setb	MiscSleepF
+	clr	TFModF
+
+HandleTF0End:
 	reti
 
 ;----------------------------------------------------------
 ; AT/PS2 to DEC LK translaton table
 ; edit: PS2-0x77 -> LK-0xad (NumLock-> Compose)
 ;----------------------------------------------------------
-ATPS22DECxlt0	DB	 00h, 067h, 065h, 05ah, 058h, 056h, 057h, 072h,   00h, 068h, 066h, 064h, 059h, 0beh,  00h,  00h
+ATPS22DECxlt0	DB	 00h, 067h, 065h, 05ah, 058h, 056h, 057h, 072h,   00h, 068h, 066h, 064h, 059h, 0beh, 0bfh,  00h
 ATPS22DECxlt1	DB	 00h, 0ach, 0aeh,  00h, 0afh, 0c1h, 0c0h,  00h,   00h,  00h, 0c3h, 0c7h, 0c2h, 0c6h, 0c5h,  00h
 ATPS22DECxlt2	DB	 00h, 0ceh, 0c8h, 0cdh, 0cch, 0d0h, 0cbh,  00h,   00h, 0d4h, 0d3h, 0d2h, 0d7h, 0d1h, 0d6h,  00h
 ATPS22DECxlt3	DB	 00h, 0deh, 0d9h, 0ddh, 0d8h, 0dch, 0dbh,  00h,   00h,  00h, 0e3h, 0e2h, 0e1h, 0e0h, 0e5h,  00h
 ATPS22DECxlt4	DB	 00h, 0e8h, 0e7h, 0e6h, 0ebh, 0efh, 0eah,  00h,   00h, 0edh, 0f3h, 0ech, 0f2h, 0f0h, 0f9h,  00h
-ATPS22DECxlt5	DB	 00h,  00h, 0fbh,  00h, 0f6h, 0f5h,  00h,  00h,  0b0h, 0abh, 0bdh, 0fah,  00h, 0f7h,  00h,  00h
-ATPS22DECxlt6	DB	 00h,  00h,  00h,  00h,  00h,  00h, 0bch,  00h,   00h, 096h,  00h, 099h, 09dh,  00h,  00h,  00h
+ATPS22DECxlt5	DB	 00h,  00h, 0fbh,  00h, 0fah, 0f5h,  00h,  00h,  0b0h, 0abh, 0bdh, 0f6h,  00h, 0f7h,  00h,  00h
+ATPS22DECxlt6	DB	 00h, 0c9h,  00h,  00h,  00h,  00h, 0bch,  00h,   00h, 096h,  00h, 099h, 09dh,  00h,  00h,  00h
 ATPS22DECxlt7	DB	092h, 094h, 097h, 09ah, 09bh, 09eh, 0bfh, 0adh,  071h,  00h, 098h, 0a0h,  00h, 09fh,  00h,  00h
-ATPS22DECxlt8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
+ATPS22DECxlt8	DB	 00h,  00h,  00h, 065h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxlt9	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxlta	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxltb	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -482,7 +545,7 @@ ATPS22DECxltE2	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  
 ATPS22DECxltE3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxltE4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxltE5	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-ATPS22DECxltE6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h, 0a7h,  00h,  00h,  00h,  00h
+ATPS22DECxltE6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h, 08dh,  00h, 0a7h, 08ah,  00h,  00h,  00h
 ATPS22DECxltE7	DB	08bh, 08ch, 0a9h,  00h, 0a8h, 0aah,  00h,  00h,   00h,  00h, 08fh,  00h,  00h, 08eh,  00h,  00h
 ATPS22DECxltE8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 ATPS22DECxltE9	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -519,27 +582,55 @@ ATPS22DECEnd:
 ;----------------------------------------------------------
 ; ring buffer insertion helper. Input Data comes in r2
 ;----------------------------------------------------------
-RingBufCheckInsert:
+RingBuf1CheckInsert:
 	; check for ring buffer overflow
-	mov	a,RingBufPtrOut
+	mov	a,RingBuf1PtrOut
 	setb	c
-	subb	a,RingBufPtrIn
-	anl	a,#RingBufSizeMask
-	jz	RingBufFull
+	subb	a,RingBuf1PtrIn
+	anl	a,#RingBuf1SizeMask
+	jz	RingBuf1Full
 
 	; some space left, insert data
-	mov	a,RingBufPtrIn
-	add	a,#RingBuf
+	mov	a,RingBuf1PtrIn
+	add	a,#RingBuf1
 	mov	r0,a
 	mov	a,r2
 	mov	@r0,a
 
 	; increment pointer
-	inc	RingBufPtrIn
-	anl	RingBufPtrIn,#RingBufSizeMask
+	inc	RingBuf1PtrIn
+	anl	RingBuf1PtrIn,#RingBuf1SizeMask
 	ret
 
-RingBufFull:
+RingBuf1Full:
+	; error routine
+;	clr	p1.@3
+	ret
+
+;----------------------------------------------------------
+; ring buffer insertion helper. Input Data comes in r2
+;----------------------------------------------------------
+RingBuf2CheckInsert:
+	; check for ring buffer overflow
+	mov	a,RingBuf2PtrOut
+	setb	c
+	subb	a,RingBuf2PtrIn
+	anl	a,#RingBuf2SizeMask
+	jz	RingBuf2Full
+
+	; some space left, insert data
+	mov	a,RingBuf2PtrIn
+	add	a,#RingBuf2
+	mov	r0,a
+	mov	a,r2
+	mov	@r0,a
+
+	; increment pointer
+	inc	RingBuf2PtrIn
+	anl	RingBuf2PtrIn,#RingBuf2SizeMask
+	ret
+
+RingBuf2Full:
 	; error routine
 ;	clr	p1.@3
 	ret
@@ -550,6 +641,18 @@ RingBufFull:
 TranslateToBuf:
 	mov	a,RawBuf
 
+	; --- check for 0xFA ACK-Code
+	cjne	a,#0FAh,TranslateToBufNotFA	;
+	clr	PS2RXCompleteF
+	setb	PS2RXAckF
+	ljmp	TranslateToBufEnd
+TranslateToBufNotFA:
+	; --- check for 0xFE Resend-Code
+	cjne	a,#0FEh,TranslateToBufNotFE	;
+	clr	PS2RXCompleteF
+	setb	PS2ResendF
+	ljmp	TranslateToBufEnd
+TranslateToBufNotFE:
 	; ------ check for Escape codes
 	; --- check for 0xF0 release / break code
 	cjne	a,#0F0h,TranslateToBufNotF0	;
@@ -667,7 +770,7 @@ TranslateToBufNoGo:
 	; --- insert
 TranslateToBufInsert:
 	mov	r2, a
-	call	RingBufCheckInsert
+	call	RingBuf1CheckInsert
 
 TranslateToBufEnd:
 	ret
@@ -676,18 +779,18 @@ TranslateToBufEnd:
 ; Send data from the ring buffer
 ;----------------------------------------------------------
 	; -- send ring buffer contents
-BufTX:
+Buf1TX:
 	; check if data is present in the ring buffer
 	clr	c
-	mov	a,RingBufPtrIn
-	subb	a,RingBufPtrOut
-	anl	a,#RingBufSizeMask
-	jz	BufTXEnd
+	mov	a,RingBuf1PtrIn
+	subb	a,RingBuf1PtrOut
+	anl	a,#RingBuf1SizeMask
+	jz	Buf1TXEnd
 
 ;	clr	p1.@1
 	; -- get data from buffer
-	mov	a,RingBufPtrOut
-	add	a,#RingBuf
+	mov	a,RingBuf1PtrOut
+	add	a,#RingBuf1
 	mov	r0,a
 	mov	a,@r0
 
@@ -696,11 +799,116 @@ BufTX:
 	clr	TI
 
 	; -- increment output pointer
-	inc	RingBufPtrOut
-	anl	RingBufPtrOut,#RingBufSizeMask
+	inc	RingBuf1PtrOut
+	anl	RingBuf1PtrOut,#RingBuf1SizeMask
 
-BufTXEnd:
+Buf1TXEnd:
 ;	setb	p1.@1
+	ret
+
+;----------------------------------------------------------
+; Send data from the ring buffer to the keyboard
+;----------------------------------------------------------
+Buf2TX:
+	; -- check if AT/PS2 bus is active
+	jb	PS2ActiveF,Buf2TXEnd
+
+	; -- allow Device-to-Host communication
+	jnb	TimeoutF,Buf2TXEnd
+
+;	; -- check for resend-flag
+;	jnb	PS2ResendF,Buf2TXNoResend
+;	dec	PS2ResendTTL
+;	mov	a,PS2ResendTTL
+;	jnz	Buf2TXGo
+;
+;	; -- Resend-TTL expired, reset the keyboard, FIXME
+;	mov	RingBuf2PtrIn,#0
+;	mov	RingBuf2PtrOut,#0
+;	mov	PS2ResendBuf,#0ffh
+;	sjmp	Buf2TXGo
+
+	; -- check if data is present in the ring buffer
+Buf2TXNoResend:
+	mov	PS2ResendTTL,#08h
+	clr	c
+	mov	a,RingBuf2PtrIn
+	subb	a,RingBuf2PtrOut
+	anl	a,#RingBuf2SizeMask
+	jz	Buf2TXEnd
+
+Buf2TXGo:
+	; -- check if AT/PS2 bus is active
+	jb	PS2ActiveF,Buf2TXEnd
+
+	; -- init the bus
+	clr	tr0
+	clr	ex0		; may diable input interrupt here
+	clr	p3.2		; clock down
+
+	; -- wait 40mus
+	call	timer0_init_40mus
+Buf2TXWait1:
+	jnb	MiscSleepF,Buf2TXWait1
+	clr	p3.4		; data down
+
+	; -- wait 40mus
+	call	timer0_init_40mus
+Buf2TXWait2:
+	jnb	MiscSleepF,Buf2TXWait2
+
+	; -- timeout timer
+	call	timer0_init
+
+;	jb	PS2ResendF,Buf2TXResend
+	; -- get data from buffer
+	mov	a,RingBuf2PtrOut
+	add	a,#RingBuf2
+	mov	r0,a
+	mov	a,@r0
+	mov	PS2TXBitBuf,a
+	mov	PS2ResendBuf,a
+	sjmp	Buf2TXSend
+
+;Buf2TXResend:
+;	; -- resend last byte
+;	clr	PS2ResendF
+;	mov	a,PS2ResendBuf
+;	mov	PS2TXBitBuf,a
+
+Buf2TXSend:
+	; -- init int handler
+	mov	r7,#0
+	setb	PS2HostToDevF
+	setb	ex0
+	setb	p3.2		; clock up
+	; -- keyboard should start sending clocks now
+Buf2TXWait3:
+	jb	PS2HostToDevF,Buf2TXWait3
+	setb	p3.4		; data up
+
+	; -- wait 1ms
+	call	timer0_init_1ms
+;	call	timer0_init_40mus
+Buf2TXWait4:
+	jnb	MiscSleepF,Buf2TXWait4
+	setb	p3.2		; clock up
+
+	; -- output to LED
+;	mov	a,PS2TXBitBuf
+;	cpl	a
+;	mov	p1,a
+
+	; -- increment output pointer
+	inc	RingBuf2PtrOut
+	anl	RingBuf2PtrOut,#RingBuf2SizeMask
+
+	; -- restore normal timeout
+	call	timer0_init
+	setb	tr0
+	setb	ex0		; may diable input interrupt here
+
+Buf2TXEnd:
 	ret
 
 ;----------------------------------------------------------
@@ -709,38 +917,58 @@ BufTXEnd:
 DECCmdProc:
 	; -- get received DEC LK command
 	mov	a,DECRXBuf
-;	clr	p1.@1
 
 	; -- turn off LEDs
-	jnb	LKCmdLedOffF,DECCPNotLedOff
+	jnb	LKCmdLedOffF,DECCPLedOff
 	clr	LKCmdLedOffF
 	cpl	a
 	anl	a,DECLedBuf
 	mov	DECLedBuf,a
-	sjmp	DECCPNotLedDisplay
+	sjmp	DECCPLedDisplay
 
-DECCPNotLedOff:
+DECCPLedOff:
 	; -- turn on LEDs
 	jnb	LKCmdLedOnF,DECCPNotLedOn
 	clr	LKCmdLedOnF
 	orl	a,DECLedBuf
 	mov	DECLedBuf,a
-	sjmp	DECCPNotLedDisplay
+	sjmp	DECCPLedDisplay
 
-DECCPNotLedDisplay:
+DECCPLedDisplay:
 	; -- output to LEDs
 	cpl	a
 	mov	c,acc.3
-	mov	p1.7,c
+	mov	p1.7,c	; ScrollLock
 	mov	c,acc.2
-	mov	p1.6,c
+	mov	p1.6,c	; CapsLock
 	mov	c,acc.1
-	mov	p1.5,c
+	mov	p1.5,c	; Compose
 	mov	c,acc.0
-	mov	p1.4,c
-
-	; -- send to PS2-Keyboard
-	; Command #0edh
+	mov	p1.4,c	; Wait/Combi
+	; -- output to AT/PS2 Keyboard
+	mov	a,DECLedBuf
+	swap	a
+	; ScrollLock
+	mov	c,acc.7
+	mov	acc.0,c
+	; CapsLock
+	mov	c,acc.6
+	mov	acc.2,c
+	; Compose to NumLock
+	mov	c,acc.5
+	mov	acc.1,c
+	anl	a,#07h
+	; -- check if LEDs changed
+	cjne	a,PS2LedBuf,DECCPLedTX2PS2
+	ljmp	DECCPDone
+DECCPLedTX2PS2:
+	; -- send to PS2 keyboad
+	mov	PS2LedBuf,a
+	mov	r2,#0edh
+	call	RingBuf2CheckInsert
+	mov	a,PS2LedBuf
+	mov	r2,a
+	call	RingBuf2CheckInsert
 	ljmp	DECCPDone
 
 DECCPNotLedOn:
@@ -759,13 +987,13 @@ DECCPNotVol:
 	; -- command 0xfd: keyboard reset. send POST code \x01\x00\x00\x00
 	cjne	a,#0fdh,DECCPNotFD
 	mov	r2,#01h
-	call	RingBufCheckInsert
+	call	RingBuf1CheckInsert
 	mov	r2,#00h
-	call	RingBufCheckInsert
+	call	RingBuf1CheckInsert
 	mov	r2,#00h
-	call	RingBufCheckInsert
+	call	RingBuf1CheckInsert
 	mov	r2,#00h
-	call	RingBufCheckInsert
+	call	RingBuf1CheckInsert
 	sjmp	DECCPDone
 DECCPNotFD:
 	; -- command 0x0A
@@ -843,10 +1071,9 @@ DECCPNotA1:
 DECCPNotA7:
 	sjmp	DECCPDone
 
-
 DECCPSendAck:
 	mov	r2,#0BAh
-	call	RingBufCheckInsert
+	call	RingBuf1CheckInsert
 ;	sjmp	DECCPDone
 
 DECCPDone:
@@ -884,6 +1111,42 @@ timer0_init:
 	mov	th0, #interval_th_11_bit
 	mov	tl0, #interval_tl_11_bit
 
+	clr	TimeoutF
+	clr	TFModF
+	setb	et0		; (IE.3) enable timer 0 interrupt
+	setb	tr0		; timer 0 run
+	ret
+
+;----------------------------------------------------------
+; init timer 0 for interval timing
+; need 40-50mus intervals
+;----------------------------------------------------------
+timer0_init_40mus:
+	anl	tmod, #0f0h	; clear all lower bits
+	orl	tmod, #01h	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
+
+	mov	th0, #interval_th_40u_18432k
+	mov	tl0, #interval_tl_40u_18432k
+
+	setb	TFModF
+	clr	MiscSleepF
+	setb	et0		; (IE.3) enable timer 0 interrupt
+	setb	tr0		; timer 0 run
+	ret
+
+;----------------------------------------------------------
+; init timer 0 for interval timing
+; need 1ms
+;----------------------------------------------------------
+timer0_init_1ms:
+	anl	tmod, #0f0h	; clear all lower bits
+	orl	tmod, #01h	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
+
+	mov	th0, #interval_th_1m_18432k
+	mov	tl0, #interval_tl_1m_18432k
+
+	setb	TFModF
+	clr	MiscSleepF
 	setb	et0		; (IE.3) enable timer 0 interrupt
 	setb	tr0		; timer 0 run
 	ret
@@ -891,7 +1154,7 @@ timer0_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_ps2_dec_8051.asm,v 1.3 2007/04/19 20:10:48 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_ps2_dec_8051.asm,v 1.4 2007/04/25 00:09:27 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -902,6 +1165,7 @@ Start:
 	; -- init UART and timer0/1
 	acall	uart_timer1_init
 	acall	timer0_init
+	clr	TFModF
 
 	; -- enable interrupts int0
 	setb	ex0		; external interupt 0 enable
@@ -912,7 +1176,7 @@ Start:
 	mov	20h,#0
 	mov	21h,#0
 	mov	22h,#0
-	mov	LKModAll,#0
+	mov	23h,#0
 
 	; -- set PS2 clock and data line
 	setb	p3.2
@@ -923,9 +1187,11 @@ Start:
 	clr	p3.7
 	clr	LKKeyClickF
 
-	; -- init the ring buffer
-	mov	RingBufPtrIn,#0
-	mov	RingBufPtrOut,#0
+	; -- init the ring buffers
+	mov	RingBuf1PtrIn,#0
+	mov	RingBuf1PtrOut,#0
+	mov	RingBuf2PtrIn,#0
+	mov	RingBuf2PtrOut,#0
 
 ;	; -- cold start flag
 ;	setb	FooBarColdStartF
@@ -935,53 +1201,56 @@ Loop:
 	; -- check AT/PS2 receive status
 	jb	PS2RXCompleteF,LoopProcessATPS2Data
 
-	; -- check on new DEC/LK data received on serial line
-	jb	RI, LoopProcessLKcmd
+	; -- check on new data from serial line
+	jb	RI, LoopProcessLKCmd
 
 	; -- loop if serial TX is active
 	jnb	TI, Loop
 
-	; send data
-	call	BufTX
+	; send data to computer
+	call	Buf1TX
+
+	; send data to keyboard
+	call	Buf2TX
 
 	; -- loop
 	sjmp Loop
+
 
 ;----------------------------------------------------------
 ; helpers for the main loop
 ;----------------------------------------------------------
 ; ----------------
 LoopProcessATPS2Data:
-; -- PC/XT data received, process the received scancode into output ring buffer
+; -- AT/PS2 data received, process the received scancode into output ring buffer
 	call	TranslateToBuf
 	sjmp	Loop
 
 ; ----------------
 LoopProcessLKcmd:
 ; -- commands from DEC host received via serial line
-;	clr	p1.@3
 	mov	a,sbuf
 	mov	DECRXBuf,a
 	clr	RI
+
 	acall	DECCmdProc
-;	setb	p1.@3
 	sjmp	Loop
 
 ;----------------------------------------------------------
 ; Still space on the ROM left for the license?
 ;----------------------------------------------------------
-LIC01	DB	"   Copyright 2007 by Alexander Kurz"
-LIC02	DB	"   "
+LIC01	DB	" Copyright 2007 by Alexander Kurz"
+LIC02	DB	" --- "
 ;GPL_S1	DB	" This program is free software; licensed under the terms of the GNU GPL V2"
-GPL01	DB	"   This program is free software; you can redistribute it and/or modify"
-GPL02	DB	"   it under the terms of the GNU General Public License as published by"
-GPL03	DB	"   the Free Software Foundation; either version 2, or (at your option)"
-GPL04	DB	"   any later version."
-GPL05	DB	"   "
-GPL06	DB	"   This program is distributed in the hope that it will be useful,"
-GPL07	DB	"   but WITHOUT ANY WARRANTY; without even the implied warranty of"
-GPL08	DB	"   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the"
-GPL09	DB	"   GNU General Public License for more details."
-GPL10	DB	"   "
+GPL01	DB	" This program is free software; you can redistribute it and/or modify"
+GPL02	DB	" it under the terms of the GNU General Public License as published by"
+GPL03	DB	" the Free Software Foundation; either version 2, or (at your option)"
+GPL04	DB	" any later version."
+GPL05	DB	" --- "
+GPL06	DB	" This program is distributed in the hope that it will be useful,"
+GPL07	DB	" but WITHOUT ANY WARRANTY; without even the implied warranty of"
+GPL08	DB	" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the"
+GPL09	DB	" GNU General Public License for more details."
+GPL10	DB	" "
 ; ----------------
 	end
