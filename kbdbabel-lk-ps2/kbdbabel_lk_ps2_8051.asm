@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; DEC LK to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_lk_ps2_8051.asm,v 1.5 2006/12/08 15:02:55 akurz Exp $
+; $KbdBabel: kbdbabel_lk_ps2_8051.asm,v 1.6 2007/04/25 08:33:23 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ; alternatively 18.432MHz and 14.7456 may be used.
@@ -520,11 +520,11 @@ lk2atxlt7	DB	000h, 078h, 007h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 
 lk2atxlt8	DB	000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 06ch, 070h, 071h, 069h, 07dh, 07ah
 lk2atxlt9	DB	000h, 000h, 070h, 000h, 071h, 079h, 069h, 072h,  07ah, 06bh, 073h, 074h, 07ch, 06ch, 075h, 07dh
 lk2atxlta	DB	07bh, 076h, 077h, 07eh, 04ah, 000h, 000h, 06bh,  074h, 072h, 075h, 059h, 011h, 000h, 012h, 014h
-lk2atxltb	DB	058h, 000h, 000h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 066h, 05ah, 00dh, 00eh
+lk2atxltb	DB	058h, 000h, 011h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 066h, 05ah, 00dh, 00eh
 lk2atxltc	DB	016h, 015h, 01ch, 01ah, 000h, 01eh, 01dh, 01bh,  022h, 061h, 000h, 026h, 024h, 023h, 021h, 000h
 lk2atxltd	DB	025h, 02dh, 02bh, 02ah, 029h, 000h, 02eh, 02ch,  034h, 032h, 000h, 036h, 035h, 033h, 031h, 000h
 lk2atxlte	DB	03dh, 03ch, 03bh, 03ah, 000h, 03eh, 043h, 042h,  041h, 000h, 046h, 044h, 04bh, 049h, 000h, 045h
-lk2atxltf	DB	04dh, 000h, 04ch, 04ah, 000h, 055h, 05bh, 05dh,  000h, 04eh, 054h, 052h, 000h, 000h, 000h, 000h
+lk2atxltf	DB	04dh, 000h, 04ch, 04ah, 000h, 055h, 05bh, 05dh,  000h, 04eh, 054h, 076h, 000h, 000h, 000h, 000h
 
 ;----------------------------------------------------------
 ; DEC LK to AT translaton table
@@ -573,7 +573,7 @@ lk2atxlte6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,
 lk2atxlte7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 lk2atxlte8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  01h,  01h,  01h,  01h,  01h,  01h
 lk2atxlte9	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltea	DB	 00h,  00h,  00h,  00h,  01h,  00h,  00h,  01h,   01h,  01h,  01h,  00h,  00h,  00h,  00h,  00h
+lk2atxltea	DB	 00h,  00h,  00h,  00h,  01h,  00h,  00h,  01h,   01h,  01h,  01h,  00h,  01h,  00h,  00h,  00h
 lk2atxlteb	DB	 00h,  00h,  01h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 lk2atxltec	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 lk2atxlted	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -1134,7 +1134,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_lk_ps2_8051.asm,v 1.2 2006/12/08 15:14:15 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_lk_ps2_8051.asm,v 1.3 2007/04/25 08:41:49 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
