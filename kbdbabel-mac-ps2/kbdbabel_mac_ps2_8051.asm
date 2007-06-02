@@ -2,7 +2,7 @@
 ; Macintosh 128k/512k/Plus to AT/PS2 keyboard transcoder
 ; for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_mac_ps2_8051.asm,v 1.4 2007/06/02 13:14:39 akurz Exp $
+; $KbdBabel: kbdbabel_mac_ps2_8051.asm,v 1.5 2007/06/02 15:38:05 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ;
@@ -23,7 +23,7 @@
 ; Mac Post-Interrupt sleep active	- p1.3
 ; AT TX Communication abort	- p1.2
 ; AT RX Communication abort	- p1.1
-; TX buffer full		- p1.0
+; Mac communication watchdog	- p1.0
 ;
 ; Build using the macroassembler by Alfred Arnold
 ; $ asl kbdbabel_mac_ps2_8051.asm -o kbdbabel_mac_ps2_8051.p
@@ -600,12 +600,12 @@ timerRXEnd:				; total 7
 ;----------------------------------------------------------
 Mac2ATxlt0	DB	 1ch,  3ch,  35h,  0dh,  21h,  42h,  55h,  00h
 Mac2ATxlt1	DB	 33h,  5ah,  26h,   0h,  15h,  4ah,  3eh,   0h
-Mac2ATxlt2	DB	 23h,  43h,  16h,  0eh,   0h,  61h,  3dh,  11h
+Mac2ATxlt2	DB	 23h,  43h,  16h,  0eh,   0h,  61h,  3dh,  14h
 Mac2ATxlt3	DB	 1ah,  3bh,  36h,  00h,  24h,  3ah,  5bh,  00h
 Mac2ATxlt4	DB	 1bh,  54h,  2ch,  29h,  2ah,  4ch,  46h,  58h
 Mac2ATxlt5	DB	 34h,  4bh,  25h,  00h,  1dh,  31h,  45h,  00h
 Mac2ATxlt6	DB	 2bh,  4dh,  1eh,  66h,  32h,  41h,  4eh,  00h
-Mac2ATxlt7	DB	 22h,  52h,  2eh,  14h,  2dh,  49h,  44h,  00h
+Mac2ATxlt7	DB	 22h,  52h,  2eh,  11h,  2dh,  49h,  44h,  00h
 
 ;----------------------------------------------------------
 ; Mac to AT translaton table
@@ -1197,7 +1197,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_mac_ps2_8051.asm,v 1.1 2007/06/02 13:21:51 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_mac_ps2_8051.asm,v 1.2 2007/06/02 15:42:12 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
