@@ -1,9 +1,9 @@
 ; ---------------------------------------------------------------------
 ; PC/XT to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.36 2007/04/17 06:59:29 akurz Exp $
+; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.37 2007/06/04 09:00:18 akurz Exp $
 ;
-; Clock/Crystal: 24MHz or 18.432MHz.
+; Clock/Crystal: 24MHz or alternative 22.1184MHz or 18.432MHz.
 ; Note: PC/XT data bits are sampled on negative clock slope.
 ; Typically there will be less than 15 microseconds time between
 ; the clock trigger and the next data line status change.
@@ -19,7 +19,7 @@
 ; CLOCK - p3.3	(Pin 13 on DIL40, Pin 7 on AT89C2051 PDIP20, Int 1)
 ;
 ; LED-Output connect:
-; LEDs are connected with 220R to Vcc
+; LEDs are connected with 470R to Vcc
 ; ScrollLock	- p1.7	(Pin 8 on DIL40, Pin 19 on AT89C2051 PDIP20)
 ; CapsLock	- p1.6	(Pin 7 on DIL40, Pin 18 on AT89C2051 PDIP20)
 ; NumLock	- p1.5	(Pin 6 on DIL40, Pin 17 on AT89C2051 PDIP20)
@@ -34,7 +34,7 @@
 ; $ p2bin -l \$ff kbdbabel_pcxt_ps2_8051
 ; write kbdbabel_pcxt_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
-; Copyright 2006 by Alexander Kurz
+; Copyright 2006, 2007 by Alexander Kurz
 ;
 ; This is free software.
 ; You may copy and redistibute this software according to the
@@ -81,7 +81,6 @@ RingBufPtrOut	equ	34h	; Ring Buffer read pointer, starting with zero
 ATRXBuf		equ	35h	; AT host-to-dev buffer
 ATRXCount	equ	36h
 ATRXResendBuf	equ	37h	; for AT resend feature
-;KbClockIntBuf	equ	33h
 
 ;------------------ arrays
 RingBuf		equ	40h
@@ -97,7 +96,7 @@ StackBottom	equ	50h	; the stack
 ; 50mus@11.0592MHz -> th0 and tl0=209 or 46 processor cycles	; (256-11059.2*0.05/12)
 interval_t0_50u_11059_2k	equ	209
 
-; 50mus@11.0592MHz -> th0 and tl0=214 or 41 processor cycles	; (256-11059.2*0.045/12)
+; 45mus@11.0592MHz -> th0 and tl0=214 or 41 processor cycles	; (256-11059.2*0.045/12)
 interval_t0_45u_11059_2k	equ	214
 
 ; 45mus@12.000MHz -> th0 and tl0=211 or 45 processor cycles	; (256-12000*0.045/12)
@@ -106,27 +105,29 @@ interval_t0_45u_12M		equ	211
 ; 40mus@18.432MHz -> th0 and tl0=194 or 61 processor cycles	; (256-18432*0.04/12)
 interval_t0_40u_18432k		equ	194
 
+; 40mus@22.1184MHz -> th0 and tl0=182 or 80 processor cycles	; (256-22118.4*0.04/12)
+interval_t0_40u_22118_4k	equ	182
+
 ; 40mus@24.000MHz -> th0 and tl0=176 or 80 processor cycles	; (256-24000*0.04/12)
 interval_t0_40u_24M		equ	176
 
-;------------------ AT RX timeout values using timer 0 in 16 bit mode
-; --- 18.432MHz
-; 20ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*20/12)
-interval_th_20m_18432k		equ	136
-interval_tl_20m_18432k		equ	0
+;------------------ KC-85 interval generation with timer 1 in 8 bit mode
+; 125mus@11.0592MHz -> th0 and tl0=141 or 115 processor cycles	; (256-11059.2*0.125/12)
+interval_t1_125u_11059_2k	equ	141
 
-; 10ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*10/12)
-interval_th_10m_18432k		equ	196
-interval_tl_10m_18432k		equ	0
+; 125mus@12.000MHz -> th0 and tl0=131 or 125 processor cycles	; (256-12000*0.125/12)
+interval_t1_125u_12M		equ	131
 
-; 1ms@18.432MHz -> th0,tl0=0fah,00h	; (65536-18432*1/12)
-interval_th_1m_18432k		equ	250
-interval_tl_1m_18432k		equ	0
+; 125mus@18.432MHz -> th0 and tl0=64 or 192 processor cycles	; (256-18432*0.125/12)
+interval_t1_125u_18432k		equ	64
 
-; 0.13ms@18.432MHz -> th0,tl0=0ffh,38h	; (65536-18432*0.13/12)
-interval_th_130u_18432k		equ	255
-interval_tl_130u_18432k		equ	56
+; 125mus@22.1184MHz -> th0 and tl0=26 or 230 processor cycles	; (256-22118.4*0.125/12)
+interval_t1_125u_22118_4k	equ	26
 
+; 125mus@24.000MHz -> th0 and tl0=6 or 250 processor cycles	; (256-24000*0.125/12)
+interval_t1_125u_24M		equ	6
+
+;------------------ timeout values using timer 0 in 16 bit mode
 ; --- 11.0592MHz
 ; 20ms@11.0592MHz -> th0,tl0=0b8h,00h	; (65536-11059.2*20/12)
 interval_th_20m_11059_2k	equ	184
@@ -140,9 +141,67 @@ interval_tl_10m_11059_2k	equ	0
 interval_th_1m_11059_2k		equ	252
 interval_tl_1m_11059_2k		equ	42
 
+; 0.3ms@11.0592MHz -> th0,tl0=0feh,ebh	; (65536-11059.2*0.3/12)
+interval_th_300u_11059_2k	equ	254
+interval_tl_300u_11059_2k	equ	235
+
+; 0.15ms@11.0592MHz -> th0,tl0=0ffh,76h	; (65536-11059.2*0.15/12)
+interval_th_150u_11059_2k	equ	255
+interval_tl_150u_11059_2k	equ	118
+
 ; 0.13ms@11.0592MHz -> th0,tl0=0ffh,88h	; (65536-11059.2*0.13/12)
 interval_th_130u_11059_2k	equ	255
 interval_tl_130u_11059_2k	equ	136
+
+; --- 18.432MHz
+; 20ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*20/12)
+interval_th_20m_18432k		equ	136
+interval_tl_20m_18432k		equ	0
+
+; 10ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*10/12)
+interval_th_10m_18432k		equ	196
+interval_tl_10m_18432k		equ	0
+
+; 1ms@18.432MHz -> th0,tl0=0fah,00h	; (65536-18432*1/12)
+interval_th_1m_18432k		equ	250
+interval_tl_1m_18432k		equ	0
+
+; 0.3ms@18.432MHz -> th0,tl0=0feh,33h	; (65536-18432*0.3/12)
+interval_th_300u_18432k		equ	254
+interval_tl_300u_18432k		equ	51
+
+; 0.15ms@18.432MHz -> th0,tl0=0ffh,19h	; (65536-18432*0.15/12)
+interval_th_150u_18432k		equ	255
+interval_tl_150u_18432k		equ	25
+
+; 0.13ms@18.432MHz -> th0,tl0=0ffh,38h	; (65536-18432*0.13/12)
+interval_th_130u_18432k		equ	255
+interval_tl_130u_18432k		equ	56
+
+; --- 22.1184MHz
+; 20ms@22.1184MHz -> th0,tl0=70h,00h	; (65536-22118.4*20/12)
+interval_th_20m_22118_4k	equ	112
+interval_tl_20m_22118_4k	equ	0
+
+; 10ms@22.1184MHz -> th0,tl0=0B8h,00h	; (65536-22118.4*10/12)
+interval_th_10m_22118_4k	equ	184
+interval_tl_10m_22118_4k	equ	0
+
+; 1ms@22.1184MHz -> th0,tl0=0f8h,0cdh	; (65536-22118.4*1/12)
+interval_th_1m_22118_4k		equ	248
+interval_tl_1m_22118_4k		equ	205
+
+; 0.3ms@22.1184MHz -> th0,tl0=0fdh,d7h	; (65536-22118.4*.3/12)
+interval_th_300u_22118_4k	equ	253
+interval_tl_300u_22118_4k	equ	215
+
+; 0.15ms@22.1184MHz -> th0,tl0=0feh,edh	; (65536-22118.4*.15/12)
+interval_th_15u_22118_4k	equ	254
+interval_tl_15u_22118_4k	equ	237
+
+; 0.128ms@22.1184MHz -> th0,tl0=0ffh,14h	; (65536-22118.4*.128/12)
+interval_th_128u_22118_4k	equ	255
+interval_tl_128u_22118_4k	equ	20
 
 ; --- 24.000MHz
 ; 20ms@24.000MHz -> th0,tl0=63h,0c0h	; (65536-24000*20/12)
@@ -156,6 +215,14 @@ interval_tl_10m_24M		equ	224
 ; 1ms@24.000MHz -> th0,tl0=0f8h,30h	; (65536-24000*1/12)
 interval_th_1m_24M		equ	248
 interval_tl_1m_24M		equ	48
+
+; 0.3ms@24.000MHz -> th0,tl0=0fdh,A8h	; (65536-24000*.3/12)
+interval_th_300u_24M		equ	253
+interval_tl_300u_24M		equ	168
+
+; 0.15ms@24.000MHz -> th0,tl0=0feh,d4h	; (65536-24000*.15/12)
+interval_th_15u_24M		equ	254
+interval_tl_15u_24M		equ	212
 
 ; 0.128ms@24.000MHz -> th0,tl0=0ffh,00h	; (65536-24000*.128/12)
 interval_th_128u_24M		equ	255
@@ -264,12 +331,6 @@ interCharTestEnd:
 ; this is an optional extra-check for the received data.
 ; The PC/XT-Protocol consists of 8 equally spaced clock cycles proceeded by
 ; one clock cycle of double length. These intervals are checked here.
-; For diagnosis purposes the timing samples can be send via serial line.
-; -- diag: time interval buffer address KbClockIntBuf
-;	mov	a,r7
-;	add	a,#KbClockIntBuf
-;	mov	r1,a
-
 ; -- save and restart timer
 	; stop timer 1
 	clr	tr1
@@ -466,7 +527,7 @@ timerTXStartBit:
 	nop
 	clr	p3.5			; 1	; Data Startbit
 
-	call	nop10
+	call	nop20
 
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
@@ -479,7 +540,7 @@ timerTXDataBit:
 	mov	p3.5,c			; 2
 	mov	TXBuf,a			; 1
 
-	call	nop10
+	call	nop20
 
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd
@@ -491,7 +552,7 @@ timerTXParityBit:
 	mov	c,ATTXParF		; 1	; parity bit
 	mov	p3.5,c			; 2
 
-	call	nop10
+	call	nop20
 
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
@@ -504,7 +565,7 @@ timerTXStopBit:
 	nop
 	setb	p3.5			; 1	; Data Stopbit
 
-	call	nop10
+	call	nop20
 
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
@@ -778,9 +839,12 @@ TranslateToBufNoEsc:
 
 TranslateToBufNoRelease:
 	; normal data byte
+	mov	a, OutputBuf
+	jz	TranslateToBufIgnoreZero
+	; normal data byte
 	mov	r2, OutputBuf
 	call	RingBufCheckInsert
-
+TranslateToBufIgnoreZero:
 TranslateToBufEnd:
 	ret
 
@@ -966,31 +1030,6 @@ ATCPDone:
 	ret
 
 ;----------------------------------------------------------
-; helper, waste 10 cpu cycles
-; note: call and return takes 4 cycles
-;----------------------------------------------------------
-nop10:
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-
-	ret
-
-;----------------------------------------------------------
 ; helper, waste 20 cpu cycles
 ; note: call and return takes 4 cycles
 ;----------------------------------------------------------
@@ -1001,6 +1040,7 @@ nop20:
 	nop
 	nop
 	nop
+
 	nop
 	nop
 	nop
@@ -1011,6 +1051,7 @@ nop20:
 	nop
 	nop
 	nop
+
 	ret
 
 ;----------------------------------------------------------
@@ -1090,7 +1131,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.3 2007/04/17 07:05:26 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.4 2007/06/04 09:35:13 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1142,9 +1183,6 @@ Loop:
 	; -- check if AT communication active.
 	jb	TFModF,Loop
 
-	; -- delay flag
-;	jb	MiscSleepF,Loop
-
 	; -- check AT line status, clock line must not be busy
 	jnb	p3.3,Loop
 
@@ -1186,7 +1224,6 @@ LoopTXWaitSent:
 LoopCheckATEnd:
 	ljmp	Loop
 
-
 ; ----------------
 LoopATTX:
 ; -- Device-to-Host communication
@@ -1218,7 +1255,7 @@ LoopTXWaitDelayEnd:
 ;----------------------------------------------------------
 ; Still space on the ROM left for the license?
 ;----------------------------------------------------------
-LIC01	DB	"   Copyright 2006 by Alexander Kurz"
+LIC01	DB	"   Copyright 2006, 2007 by Alexander Kurz"
 LIC02	DB	"   "
 GPL01	DB	"   This program is free software; you can redistribute it and/or modify"
 GPL02	DB	"   it under the terms of the GNU General Public License as published by"

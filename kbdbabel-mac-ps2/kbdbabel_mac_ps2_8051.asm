@@ -2,7 +2,7 @@
 ; Macintosh 128k/512k/Plus to AT/PS2 keyboard transcoder
 ; for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_mac_ps2_8051.asm,v 1.5 2007/06/02 15:38:05 akurz Exp $
+; $KbdBabel: kbdbabel_mac_ps2_8051.asm,v 1.6 2007/06/04 09:14:45 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ;
@@ -15,7 +15,7 @@
 ; CLOCK - p3.3	(Pin 13 on DIL40, Pin 7 on AT89C2051 PDIP20, Int 1)
 ;
 ; LED-Output connect:
-; LEDs are connected with 220R to Vcc
+; LEDs are connected with 470R to Vcc
 ; ScrollLock	- p1.7	(Pin 8 on DIL40, Pin 19 on AT89C2051 PDIP20)
 ; CapsLock	- p1.6	(Pin 7 on DIL40, Pin 18 on AT89C2051 PDIP20)
 ; NumLock	- p1.5	(Pin 6 on DIL40, Pin 17 on AT89C2051 PDIP20)
@@ -75,8 +75,8 @@ MacStoredBreakF	bit	23h.1	; stored break bit for shift-scancode, *aaargh*
 ;------------------ octets
 ;		equ	24h
 ;		equ	25h
-;		equ	26h
-MacBitBuf	equ	27h	; bi-directional Mac communication bit buffer
+MacBitBuf	equ	26h	; bi-directional Mac communication bit buffer
+MacResetTTL	equ	37h	; long pause
 ATBitCount	equ	28h	; AT scancode TX counter
 RawBuf		equ	30h	; raw Mac scancode
 OutputBuf	equ	31h	; AT scancode
@@ -86,8 +86,6 @@ RingBufPtrOut	equ	34h	; Ring Buffer read pointer, starting with zero
 ATRXBuf		equ	35h	; AT host-to-dev buffer
 ATRXCount	equ	36h
 ATRXResendBuf	equ	37h	; for AT resend feature
-MacResetTTL	equ	38h	; long pause
-
 
 ;------------------ arrays
 RingBuf		equ	40h
@@ -112,34 +110,29 @@ interval_t0_45u_12M		equ	211
 ; 40mus@18.432MHz -> th0 and tl0=194 or 61 processor cycles	; (256-18432*0.04/12)
 interval_t0_40u_18432k		equ	194
 
+; 40mus@22.1184MHz -> th0 and tl0=182 or 80 processor cycles	; (256-22118.4*0.04/12)
+interval_t0_40u_22118_4k	equ	182
+
 ; 40mus@24.000MHz -> th0 and tl0=176 or 80 processor cycles	; (256-24000*0.04/12)
 interval_t0_40u_24M		equ	176
 
-;------------------ Mac scancode timing intervals generated with timer 1 in 8 bit mode
-; 150mus@11.0592MHz -> th0 and tl0=118 or 138 processor cycles	; (256-11059.2*0.15/12)
-interval_t1_150u_11059_2k	equ	118
+;------------------ KC-85 interval generation with timer 1 in 8 bit mode
+; 125mus@11.0592MHz -> th0 and tl0=141 or 115 processor cycles	; (256-11059.2*0.125/12)
+interval_t1_125u_11059_2k	equ	141
 
-; 128mus@24.000MHz -> th0 and tl0=0 or 255 processor cycles	; (256-24000*0.128/12)
-interval_t1_128u_24M		equ	0
+; 125mus@12.000MHz -> th0 and tl0=131 or 125 processor cycles	; (256-12000*0.125/12)
+interval_t1_125u_12M		equ	131
 
-;------------------ AT RX timeout values using timer 0 in 16 bit mode
-; --- 18.432MHz
-; 20ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*20/12)
-interval_th_20m_18432k		equ	136
-interval_tl_20m_18432k		equ	0
+; 125mus@18.432MHz -> th0 and tl0=64 or 192 processor cycles	; (256-18432*0.125/12)
+interval_t1_125u_18432k		equ	64
 
-; 10ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*10/12)
-interval_th_10m_18432k		equ	196
-interval_tl_10m_18432k		equ	0
+; 125mus@22.1184MHz -> th0 and tl0=26 or 230 processor cycles	; (256-22118.4*0.125/12)
+interval_t1_125u_22118_4k	equ	26
 
-; 1ms@18.432MHz -> th0,tl0=0fah,00h	; (65536-18432*1/12)
-interval_th_1m_18432k		equ	250
-interval_tl_1m_18432k		equ	0
+; 125mus@24.000MHz -> th0 and tl0=6 or 250 processor cycles	; (256-24000*0.125/12)
+interval_t1_125u_24M		equ	6
 
-; 0.13ms@18.432MHz -> th0,tl0=0ffh,38h	; (65536-18432*0.13/12)
-interval_th_130u_18432k		equ	255
-interval_tl_130u_18432k		equ	56
-
+;------------------ timeout values using timer 0 in 16 bit mode
 ; --- 11.0592MHz
 ; 20ms@11.0592MHz -> th0,tl0=0b8h,00h	; (65536-11059.2*20/12)
 interval_th_20m_11059_2k	equ	184
@@ -165,6 +158,56 @@ interval_tl_150u_11059_2k	equ	118
 interval_th_130u_11059_2k	equ	255
 interval_tl_130u_11059_2k	equ	136
 
+; --- 18.432MHz
+; 20ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*20/12)
+interval_th_20m_18432k		equ	136
+interval_tl_20m_18432k		equ	0
+
+; 10ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*10/12)
+interval_th_10m_18432k		equ	196
+interval_tl_10m_18432k		equ	0
+
+; 1ms@18.432MHz -> th0,tl0=0fah,00h	; (65536-18432*1/12)
+interval_th_1m_18432k		equ	250
+interval_tl_1m_18432k		equ	0
+
+; 0.3ms@18.432MHz -> th0,tl0=0feh,33h	; (65536-18432*0.3/12)
+interval_th_300u_18432k		equ	254
+interval_tl_300u_18432k		equ	51
+
+; 0.15ms@18.432MHz -> th0,tl0=0ffh,19h	; (65536-18432*0.15/12)
+interval_th_150u_18432k		equ	255
+interval_tl_150u_18432k		equ	25
+
+; 0.13ms@18.432MHz -> th0,tl0=0ffh,38h	; (65536-18432*0.13/12)
+interval_th_130u_18432k		equ	255
+interval_tl_130u_18432k		equ	56
+
+; --- 22.1184MHz
+; 20ms@22.1184MHz -> th0,tl0=70h,00h	; (65536-22118.4*20/12)
+interval_th_20m_22118_4k	equ	112
+interval_tl_20m_22118_4k	equ	0
+
+; 10ms@22.1184MHz -> th0,tl0=0B8h,00h	; (65536-22118.4*10/12)
+interval_th_10m_22118_4k	equ	184
+interval_tl_10m_22118_4k	equ	0
+
+; 1ms@22.1184MHz -> th0,tl0=0f8h,0cdh	; (65536-22118.4*1/12)
+interval_th_1m_22118_4k		equ	248
+interval_tl_1m_22118_4k		equ	205
+
+; 0.3ms@22.1184MHz -> th0,tl0=0fdh,d7h	; (65536-22118.4*.3/12)
+interval_th_300u_22118_4k	equ	253
+interval_tl_300u_22118_4k	equ	215
+
+; 0.15ms@22.1184MHz -> th0,tl0=0feh,edh	; (65536-22118.4*.15/12)
+interval_th_15u_22118_4k	equ	254
+interval_tl_15u_22118_4k	equ	237
+
+; 0.128ms@22.1184MHz -> th0,tl0=0ffh,14h	; (65536-22118.4*.128/12)
+interval_th_128u_22118_4k	equ	255
+interval_tl_128u_22118_4k	equ	20
+
 ; --- 24.000MHz
 ; 20ms@24.000MHz -> th0,tl0=63h,0c0h	; (65536-24000*20/12)
 interval_th_20m_24M		equ	99
@@ -178,30 +221,17 @@ interval_tl_10m_24M		equ	224
 interval_th_1m_24M		equ	248
 interval_tl_1m_24M		equ	48
 
+; 0.3ms@24.000MHz -> th0,tl0=0fdh,A8h	; (65536-24000*.3/12)
+interval_th_300u_24M		equ	253
+interval_tl_300u_24M		equ	168
+
+; 0.15ms@24.000MHz -> th0,tl0=0feh,d4h	; (65536-24000*.15/12)
+interval_th_15u_24M		equ	254
+interval_tl_15u_24M		equ	212
+
 ; 0.128ms@24.000MHz -> th0,tl0=0ffh,00h	; (65536-24000*.128/12)
 interval_th_128u_24M		equ	255
 interval_tl_128u_24M		equ	0
-
-;------------------ PCXT RX timeout and interval diagnosis using timer 0 in 16 bit mode
-; --- 11 bit for timing diagnosis
-; 1.02ms @24.000MHz	; 2048*12/24000
-; 1.33ms @18.432MHz	; 2048*12/18432
-; 2.22ms @11.0592MHz	; 2048*12/11059.2
-; 3.33ms @7.3728MHz	; 2048*12/7372.8
-interval_th_11_bit		equ	0f8h
-interval_tl_11_bit		equ	0
-
-; --- 10 bit for timing diagnosis
-; 1.1ms @11.0592MHz	; 1024*12/11059.2
-; 1.7ms @7.3728MHz	; 1024*12/7372.8
-interval_th_10_bit		equ	0fch
-interval_tl_10_bit		equ	0
-
-; --- 9 bit for timing diagnosis
-; 0.83ms @7.3728MHz	; 512*12/7372.8
-; 1.7ms @3.6864MHz	; 512*12/3686.4
-interval_th_9_bit		equ	0feh
-interval_tl_9_bit		equ	0
 
 ;----------------------------------------------------------
 ; start
@@ -306,7 +336,6 @@ timer1Return:
 	pop	acc
 	reti
 
-
 ;----------------------------------------------------------
 ; int1 handler:
 ; trigger on host-do-device transmission signal
@@ -386,7 +415,7 @@ timerTXStartBit:
 	nop
 	clr	p3.5			; 1	; Data Startbit
 
-	call	nop10
+	call	nop20
 
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
@@ -399,7 +428,7 @@ timerTXDataBit:
 	mov	p3.5,c			; 2
 	mov	TXBuf,a			; 1
 
-	call	nop10
+	call	nop20
 
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd
@@ -411,7 +440,7 @@ timerTXParityBit:
 	mov	c,ATTXParF		; 1	; parity bit
 	mov	p3.5,c			; 2
 
-	call	nop10
+	call	nop20
 
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
@@ -424,7 +453,7 @@ timerTXStopBit:
 	nop
 	setb	p3.5			; 1	; Data Stopbit
 
-	call	nop10
+	call	nop20
 
 	clr	p3.3			; 1	; Clock
 	sjmp	timerTXEnd		; 2
@@ -433,6 +462,7 @@ timerTXStopBit:
 timerTXClockRelease:
 ; -- release clock line
 
+	call	nop20
 	call	nop20
 
 	mov	a,ATBitCount		; 1
@@ -672,8 +702,6 @@ Mac2ATxltB3e4	DB	 00h,  00h
 Mac2ATxltB3e5	DB	 00h,  01h
 Mac2ATxltB3e6	DB	 00h,  00h
 Mac2ATxltB3e7	DB	 00h,  00h
-
-
 
 ;----------------------------------------------------------
 ; ring buffer insertion helper. Input Data comes in r2
@@ -1053,31 +1081,6 @@ ATCPDone:
 	ret
 
 ;----------------------------------------------------------
-; helper, waste 10 cpu cycles
-; note: call and return takes 4 cycles
-;----------------------------------------------------------
-nop10:
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-
-	ret
-
-;----------------------------------------------------------
 ; helper, waste 20 cpu cycles
 ; note: call and return takes 4 cycles
 ;----------------------------------------------------------
@@ -1088,6 +1091,7 @@ nop20:
 	nop
 	nop
 	nop
+
 	nop
 	nop
 	nop
@@ -1098,6 +1102,7 @@ nop20:
 	nop
 	nop
 	nop
+
 	ret
 
 ;----------------------------------------------------------
@@ -1116,7 +1121,7 @@ uart_timer2_init:
 	ret
 
 ;----------------------------------------------------------
-; init timer 1 in 16 bit mode for test intervals of 20ms
+; init timer 1 in 16 bit mode for watchdog intervals of 20ms
 ;----------------------------------------------------------
 timer1_20ms_init:
 	clr	tr1
@@ -1130,9 +1135,8 @@ timer1_20ms_init:
 	setb	tr1		; go
 	ret
 
-
 ;----------------------------------------------------------
-; init timer 1 in 16 bit mode for test intervals of 300mus
+; init timer 1 in 16 bit mode for post-word-transfer intervals of 300mus
 ;----------------------------------------------------------
 timer1_300u_init:
 	clr	tr1
@@ -1193,11 +1197,10 @@ timer0_20ms_init:
 	setb	tr0		; go
 	ret
 
-
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_mac_ps2_8051.asm,v 1.2 2007/06/02 15:42:12 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_mac_ps2_8051.asm,v 1.3 2007/06/04 09:36:44 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1272,9 +1275,6 @@ LoopNotMacClkPostF:
 	jnb	MacTFModF,LoopNotMacTFModF
 	jnb	MiscSleepT1F,LoopTTLProcess
 LoopNotMacTFModF:
-
-	; -- delay flag
-;	jb	MiscSleepT0F,Loop
 
 	; -- check AT line status, clock line must not be busy
 	jnb	p3.3,Loop
@@ -1381,7 +1381,6 @@ LoopTXWaitSent:
 	jb	TFModF,LoopTXWaitSent
 LoopCheckATEnd:
 	ljmp	Loop
-
 
 ; ----------------
 LoopATTX:
