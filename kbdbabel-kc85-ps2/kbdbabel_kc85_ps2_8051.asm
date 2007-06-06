@@ -1,12 +1,13 @@
 ; ---------------------------------------------------------------------
 ; Robotron KC-85 to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $KbdBabel: kbdbabel_kc85_ps2_8051.asm,v 1.2 2007/06/04 09:31:07 akurz Exp $
+; $KbdBabel: kbdbabel_kc85_ps2_8051.asm,v 1.3 2007/06/06 16:49:18 akurz Exp $
 ;
 ; Clock/Crystal: development version with 24MHz.
 ;
 ; KC-85 Keyboard connect:
 ; Data - p3.2  (Pin 12 on DIL40, Pin 6 on AT89C2051 PDIP20, Int 0)
+; 9V-generation - p3.4   (Pin 14 on DIL40, Pin 8 on AT89C2051 PDIP20)
 ;
 ; AT Host connect:
 ; DATA - p3.5	(Pin 15 on DIL40, Pin 9 on AT89C2051 PDIP20)
@@ -320,7 +321,6 @@ HandleTF1:
 
 	mov	a,KC85ClockCount
 	clr	c
-	inc	KC85ClockCount
 	; --- check count < 32
 	subb	a,#32
 	jc	timer1StateInvalid
@@ -337,13 +337,14 @@ HandleTF1:
 	subb	a,#36
 	jc	timer1InterChar
 ; -----------------
-; --- Repeat-Timeout: Key released: stop timer
+; --- Repeat-Timeout: Key released: do not inc the counter
 	clr	tr1
 	setb	KC85ClockTimeoutF
 	sjmp	timer1Return
 ; -----------------
 ; --- inter-character timeout
 timer1InterChar:
+	inc	KC85ClockCount
 	setb	KC85WordTimeoutF
 	setb	p1.0
 	clr	KC85DataBitValid
@@ -353,6 +354,7 @@ timer1InterChar:
 ; -----------------
 ; --- invalid timing:
 timer1StateInvalid:
+	inc	KC85ClockCount
 	clr	KC85DataBitValid
 	setb	p1.4
 	sjmp	timer1Return
@@ -360,6 +362,7 @@ timer1StateInvalid:
 ; -----------------
 ; --- valid timing with 0 bit value
 timer1StateValid0:
+	inc	KC85ClockCount
 	clr	KC85DataBit
 	setb	KC85DataBitValid
 	clr	p1.3
@@ -369,6 +372,7 @@ timer1StateValid0:
 ; -----------------
 ; --- valid timing with 1 bit value
 timer1StateValid1:
+	inc	KC85ClockCount
 	setb	KC85DataBit
 	setb	KC85DataBitValid
 	clr	p1.4
@@ -1098,7 +1102,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_kc85_ps2_8051.asm,v 1.1 2007/06/04 09:39:54 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_kc85_ps2_8051.asm,v 1.2 2007/06/06 16:51:41 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1141,6 +1145,9 @@ InitResetDelay:
 
 ; ----------------
 Loop:
+	; --- 9V generation with software
+	cpl	p3.4
+
 	; -- check Keyboard receive status
 	jb	RXCompleteF,LoopProcessData
 
