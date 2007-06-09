@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; PC/XT to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.37 2007/06/04 09:00:18 akurz Exp $
+; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.38 2007/06/09 16:59:13 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz or alternative 22.1184MHz or 18.432MHz.
 ; Note: PC/XT data bits are sampled on negative clock slope.
@@ -66,6 +66,8 @@ ATCmdResetF	bit	21h.5	; reset
 ATCmdLedF	bit	21h.6	; AT command processing: set LED
 ATCmdScancodeF	bit	21h.7	; AT command processing: set scancode
 ATKbdDisableF	bit	22h.0	; Keyboard disable
+ATTXMasqPrtScrF	bit	22h.1	; TX-AT-Masq-Char-Bit (for PrtScr-Key)
+ATTXMasqPauseF	bit	22h.2	; TX-AT-Masq-Char-Bit (for Pause-Key, not implemented here)
 
 ;------------------ octets
 KbBitBufL	equ	24h
@@ -740,7 +742,7 @@ timerRXEnd:				; total 7
 PCXT2ATxlt0	DB	 00h, 076h, 016h, 01eh, 026h, 025h, 02eh, 036h,  03dh, 03eh, 046h, 045h, 04eh, 055h, 066h,  0dh
 PCXT2ATxlt1	DB	015h, 01dh, 024h, 02dh, 02ch, 035h, 03ch, 043h,  044h, 04dh, 054h, 05bh, 05ah, 014h, 01ch, 01bh
 PCXT2ATxlt2	DB	023h, 02bh, 034h, 033h, 03bh, 042h, 04bh, 04ch,  052h,  0eh, 012h, 05dh, 01ah, 022h, 021h, 02ah
-PCXT2ATxlt3	DB	032h, 031h, 03ah, 041h, 049h, 04ah, 059h, 07ch,  011h, 029h, 011h,  05h,  06h,  04h,  0ch,  03h
+PCXT2ATxlt3	DB	032h, 031h, 03ah, 041h, 049h, 04ah, 059h,  00h,  011h, 029h, 011h,  05h,  06h,  04h,  0ch,  03h
 PCXT2ATxlt4	DB	00bh, 083h,  0ah,  01h,  09h, 077h, 07eh, 06ch,  075h, 07dh, 07bh, 06bh, 073h, 074h, 079h, 069h
 PCXT2ATxlt5	DB	072h, 07ah, 070h, 071h,  00h,  00h,  00h, 078h,   07h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 PCXT2ATxlt6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -748,18 +750,22 @@ PCXT2ATxlt7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h
 
 ;----------------------------------------------------------
 ; PC/XT to AT translaton table
-; Bit-Table for two-byte-AT-Scancodes
+; Bit-Table for multi-byte-AT-Scancodes
 ; eg: CapsLock (PC/XT 03ah, AT 058h) is considered completely useless and is
 ;     translated to R-ALT (AT 0E0h, 011h) which is a two-byte-scancode
 ;     Hence bit 3a is set to one.
 ; Note: even in the small 89c2051 there is enough program memory space for
 ;	this space-consuming lookup table. Does not look nice,
 ;	but it is easy to read and will execute fast.
+;
+; bit 0: E0-Escape
+; bit 1: send Make E0,12,E0,7C / BreakE0,F0,7C,E0,F0,12 (PrtScr)
+; bit 2: send Make E1,14,77,E1,F0,14,F0,77 (Pause)
 ;----------------------------------------------------------
 PCXT2ATxlte0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 PCXT2ATxlte1	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 PCXT2ATxlte2	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-PCXT2ATxlte3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  01h,  00h,  00h,  00h,  00h,  00h
+PCXT2ATxlte3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  02h,   00h,  00h,  01h,  00h,  00h,  00h,  00h,  00h
 PCXT2ATxlte4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 PCXT2ATxlte5	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 PCXT2ATxlte6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -813,6 +819,10 @@ TranslateToBufPCXT:
 	movc	a,@a+dptr
 	mov	c,acc.0
 	mov	ATTXMasqF,c
+	mov	c,acc.1
+	mov	ATTXMasqPrtScrF,c
+	mov	c,acc.2
+	mov	ATTXMasqPauseF,c
 	mov	a,r4
 
 	; get AT scancode
@@ -826,6 +836,60 @@ TranslateToBufPCXT:
 	; keyboard disabled?
 	jb	ATKbdDisableF,TranslateToBufEnd
 
+	; check for PrtScr Argh!
+	jnb	ATTXMasqPrtScrF,TranslateToBufNoPrtScr
+	jnb	ATTXBreakF,TranslateToBufPrtScrMake
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#07Ch
+	call	RingBufCheckInsert
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+	sjmp	TranslateToBufEnd
+TranslateToBufPrtScrMake:
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#07ch
+	call	RingBufCheckInsert
+	sjmp	TranslateToBufEnd
+TranslateToBufNoPrtScr:
+
+	; check for Pause, only Make-Code *AAAARRRGH*
+	jnb	ATTXMasqPauseF,TranslateToBufNoPause
+	jb	ATTXBreakF,TranslateToBufNoPause
+	mov	r2,#0E1h
+	call	RingBufCheckInsert
+	mov	r2,#014h
+	call	RingBufCheckInsert
+	mov	r2,#077h
+	call	RingBufCheckInsert
+	mov	r2,#0E1h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#014h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#077h
+	call	RingBufCheckInsert
+	sjmp	TranslateToBufEnd
+TranslateToBufNoPause:
+
+	; dont send zero scancodes
+	mov	a, OutputBuf
+	jz	TranslateToBufIgnoreZero
+
 	; check for 0xE0 escape code
 	jnb	ATTXMasqF,TranslateToBufNoEsc
 	mov	r2,#0E0h
@@ -838,9 +902,6 @@ TranslateToBufNoEsc:
 	call	RingBufCheckInsert
 
 TranslateToBufNoRelease:
-	; normal data byte
-	mov	a, OutputBuf
-	jz	TranslateToBufIgnoreZero
 	; normal data byte
 	mov	r2, OutputBuf
 	call	RingBufCheckInsert
@@ -1131,7 +1192,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.4 2007/06/04 09:35:13 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.5 2007/06/09 17:43:46 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
