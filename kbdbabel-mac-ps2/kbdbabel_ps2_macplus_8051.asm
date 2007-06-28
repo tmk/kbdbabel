@@ -2,7 +2,7 @@
 ; AT/PS2 to Macintosh Plus keyboard transcoder
 ; for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_ps2_macplus_8051.asm,v 1.3 2007/06/18 08:33:04 akurz Exp $
+; $KbdBabel: kbdbabel_ps2_macplus_8051.asm,v 1.5 2007/06/27 22:31:34 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ;
@@ -26,8 +26,8 @@
 ; Int1 / PS2 active		- p1.0
 ;
 ; Build using the macroassembler by Alfred Arnold
-; $ asl kbdbabel_ps2_macplus_8051.asm -o kbdbabel_ps2_macplus_8051.p
-; $ p2bin -l \$ff kbdbabel_ps2_macplus_8051
+; $ asl -L kbdbabel_ps2_macplus_8051.asm -o kbdbabel_ps2_macplus_8051.p
+; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_ps2_macplus_8051
 ; write kbdbabel_ps2_macplus_8051.bin on an empty 27C256 or AT89C2051
 ;
 ; Copyright 2007 by Alexander Kurz
@@ -44,37 +44,16 @@
 ;----------------------------------------------------------
 ; Variables / Memory layout
 ;----------------------------------------------------------
-;------------------ bits
-PS2RXBitF	bit	20h.0	; RX-bit-buffer
-PS2RXCompleteF	bit	20h.1	; full and correct byte-received
-PS2ActiveF	bit	20h.2	; PS2 RX or TX in progress flag
-PS2HostToDevF	bit	20h.3	; host-to-device flag for Int1-handler
-PS2RXBreakF	bit	20h.4	; AT/PS2 0xF0 Break scancode received
-PS2RXEscapeF	bit	20h.5	; AT/PS2 0xE0 Escape scancode received
-PS2TXAckF	bit	20h.6	; ACK-Bit on host-to-dev
-PS2RXAckF	bit	20h.7	; ACK-Scancode received
-MiscSleepF	bit	21h.0	; sleep timer active flag
-TF0ModF		bit	21h.1	; Timer modifier: PS2 timeout or alarm clock
-TimeoutF	bit	21h.2	; Timeout occured
-PS2ResendF	bit	21h.3	; AT/PS2 resend
-MacCapsLockF	bit	21h.4	; Mechanical CapsLock-Emulation
-PS2LastBreakF	bit	21h.5	; for PS2-Typematic surpressor
-PS2LastEscapeF	bit	21h.6	; for PS2-Typematic surpressor
-TF1ModF		bit	22h.1	; Timer modifier
-MacMasq9eF	bit	22h.2	; Mac 9e Masq-Scancode
-MacMasq8e9eF	bit	22h.3	; Mac 8e9e Masq-Scancode
-MiscSleepT1F	bit	22h.4	; sleep timer1 active flag
-MacTxF		bit	22h.5	; Mac RX/TX control flag
-MacSleepInitF	bit	22h.6	; timer init flag
-MacRXCompleteF	bit	22h.7	; full and correct byte-received
-
 ;------------------ octets
+B20		sfrb	20h	; bit adressable space
+B21		sfrb	21h
+B22		sfrb	22h
 ;		equ	23h
-KbBitBufL	equ	24h
-KbBitBufH	equ	25h
+KbBitBufL	sfrb	24h
+KbBitBufH	sfrb	25h
 PS2TXBitBuf	equ	26h
 MacBitBuf	equ	27h
-MacBitCount	equ	28h
+MacBitCount	sfrb	28h
 MacPauseCount	equ	29h
 RingBuf1PtrIn	equ	30h	; Ring Buffer write pointer, starting with zero
 RingBuf1PtrOut	equ	31h	; Ring Buffer read pointer, starting with zero
@@ -90,6 +69,31 @@ MacRXBitBuf	equ	3ah	; Mac RX Bit buffer
 MacRXBuf	equ	3bh	; Mac RX buffer
 MacTxBuf	equ	3ch	; Mac TX buffer
 PS2LastBuf	equ	3dh	; for PS2-Typematic surpressor
+
+;------------------ bits
+PS2RXBitF	bit	B20.0	; RX-bit-buffer
+PS2RXCompleteF	bit	B20.1	; full and correct byte-received
+PS2ActiveF	bit	B20.2	; PS2 RX or TX in progress flag
+PS2HostToDevF	bit	B20.3	; host-to-device flag for Int1-handler
+PS2RXBreakF	bit	B20.4	; AT/PS2 0xF0 Break scancode received
+PS2RXEscapeF	bit	B20.5	; AT/PS2 0xE0 Escape scancode received
+PS2TXAckF	bit	B20.6	; ACK-Bit on host-to-dev
+PS2RXAckF	bit	B20.7	; ACK-Scancode received
+MiscSleepF	bit	B21.0	; sleep timer active flag
+TF0ModF		bit	B21.1	; Timer modifier: PS2 timeout or alarm clock
+TimeoutF	bit	B21.2	; Timeout occured
+PS2ResendF	bit	B21.3	; AT/PS2 resend
+MacCapsLockF	bit	B21.4	; Mechanical CapsLock-Emulation
+PS2LastBreakF	bit	B21.5	; for PS2-Typematic surpressor
+PS2LastEscapeF	bit	B21.6	; for PS2-Typematic surpressor
+TF1ModF		bit	B22.1	; Timer modifier
+MacMasq9eF	bit	B22.2	; Mac 9e Masq-Scancode
+MacMasq8e9eF	bit	B22.3	; Mac 8e9e Masq-Scancode
+MiscSleepT1F	bit	B22.4	; sleep timer1 active flag
+MacTxF		bit	B22.5	; Mac RX/TX control flag
+MacSleepInitF	bit	B22.6	; timer init flag
+MacRXCompleteF	bit	B22.7	; full and correct byte-received
+
 ;------------------ arrays
 RingBuf1		equ	40h
 RingBuf1SizeMask	equ	0fh	; 16 byte ring-buffer size
@@ -671,20 +675,22 @@ AT2MacXlt8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,
 ;----------------------------------------------------------
 ; AT/PS2 to Mac Plus translation extension table for Mac-Escape-Codes
 ; note: the two bits used here may also be encodedcoded
-;	into bit 0 and bit 7 of AT2Macxlt0.
+;	into bit 0 and bit 7 of AT2Macxlt0 / AT2MacXltE0
 ;	For better readability it is encoded explicitly here.
 ;
 ; bit 0: 9e escape
 ; bit 1: 8e,9e escape
+; bit 4: PS2-E0-9e escape
+; bit 5: PS2-E0-8e,9e escape
 ;----------------------------------------------------------
 AT2MacEXlt0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 AT2MacEXlt1	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 AT2MacEXlt2	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 AT2MacEXlt3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXlt4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXlt5	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXlt6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  01h,  00h,  01h,  01h,  00h,  00h,  00h
-AT2MacEXlt7	DB	 01h,  01h,  01h,  01h,  01h,  01h,  01h,  02h,   00h,  02h,  01h,  01h,  02h,  01h,  00h,  00h
+AT2MacEXlt4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  20h,  00h,  00h,  00h,  00h,  00h
+AT2MacEXlt5	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  10h,  00h,  00h,  00h,  00h,  00h
+AT2MacEXlt6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  01h,  00h,  11h,  01h,  00h,  00h,  00h
+AT2MacEXlt7	DB	 01h,  01h,  11h,  01h,  11h,  11h,  01h,  02h,   00h,  02h,  01h,  01h,  02h,  01h,  00h,  00h
 AT2MacEXlt8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 
 ;----------------------------------------------------------
@@ -699,20 +705,6 @@ AT2MacXltE5	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  98h
 AT2MacxltE6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h, 0b0h,  00h,  00h,  00h,  00h
 AT2MacXltE7	DB	 00h,  00h,  88h,  00h, 0a0h, 0d8h,  00h,  02h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 AT2MacXltE8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-
-;----------------------------------------------------------
-; AT/PS2 to Mac Plus translation extension table for 0xE0-Escaped scancodes
-; to Mac-Escape-Codes
-;----------------------------------------------------------
-AT2MacEXltE0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXltE1	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXltE2	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXltE3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXltE4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  02h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXltE5	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  01h,  00h,  00h,  00h,  00h,  00h
-AT2MacExltE6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  01h,  00h,  00h,  00h,  00h
-AT2MacEXltE7	DB	 00h,  00h,  01h,  00h,  01h,  01h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-AT2MacEXltE8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 
 ;----------------------------------------------------------
 ; ring buffer insertion helper. Input Data comes in r2
@@ -889,11 +881,11 @@ TranslateToBufE0Esc:
 	clr	PS2RXEscapeF
 
 	; --- check for Multi-Byte Mac Scancodes
-	mov	dptr,#AT2MacEXltE0
+	mov	dptr,#AT2MacEXlt0
 	movc	a,@a+dptr
-	mov	c,acc.0
+	mov	c,acc.4
 	mov	MacMasq9eF,c
-	mov	c,acc.1
+	mov	c,acc.5
 	mov	MacMasq8e9eF,c
 
 	; --- get Mac Scancode
@@ -905,8 +897,14 @@ TranslateToBufE0Esc:
 
 TranslateToBufInsert:
 	; --- dont insert zeros
-	jz	TranslateToBufEnd
+	jnz	TranslateToBufGo
+	clr	PS2RXBreakF
+	clr	PS2RXEscapeF
+	clr	MacMasq9eF
+	clr	MacMasq8e9eF
+	sjmp	TranslateToBufEnd
 
+TranslateToBufGo:
 	; --- Mac Make/Break
 	mov	c,PS2RXBreakF
 	mov	acc.0,c
@@ -1192,7 +1190,7 @@ timer1_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_ps2_macplus_8051.asm,v 1.1 2007/06/18 08:36:31 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_ps2_macplus_8051.asm,v 1.2 2007/06/28 10:13:41 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1213,10 +1211,9 @@ Start:
 	setb	ea
 
 	; -- clear all flags
-	mov	20h,#0
-	mov	21h,#0
-	mov	22h,#0
-	mov	23h,#0
+	mov	B20,#0
+	mov	B21,#0
+	mov	B22,#0
 
 	; -- set PS2 clock and data line
 	setb	p3.3
@@ -1339,8 +1336,8 @@ GPL04	DB	" any later version."
 GPL05	DB	" --- "
 GPL06	DB	" This program is distributed in the hope that it will be useful,"
 GPL07	DB	" but WITHOUT ANY WARRANTY; without even the implied warranty of"
-;GPL08	DB	" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the"
-;GPL09	DB	" GNU General Public License for more details."
-;GPL10	DB	" "
+GPL08	DB	" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the"
+GPL09	DB	" GNU General Public License for more details."
+GPL10	DB	" "
 ; ----------------
 	end
