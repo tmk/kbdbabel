@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Sun to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.6 2006/12/08 15:41:29 akurz Exp $
+; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.7 2007/06/27 22:41:52 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ; alternatively 18.432MHz and 14.7456 may be used.
@@ -29,8 +29,8 @@
 ; TX buffer full		- p1.0
 ;
 ; Build using the macroassembler by Alfred Arnold
-; $ asl kbdbabel_sun_ps2_8051.asm -o kbdbabel_sun_ps2_8051.p
-; $ p2bin -l \$ff kbdbabel_sun_ps2_8051
+; $ asl -L kbdbabel_sun_ps2_8051.asm -o kbdbabel_sun_ps2_8051.p
+; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_sun_ps2_8051
 ; write kbdbabel_sun_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
 ; Copyright 2006 by Alexander Kurz
@@ -47,27 +47,11 @@
 ;----------------------------------------------------------
 ; Variables / Memory layout
 ;----------------------------------------------------------
-;------------------ bits
-MiscRXCompleteF	bit	20h.1	; full and correct byte-received
-ATTXBreakF	bit	20h.3	; Release/Break-Code flag
-ATTXMasqF	bit	20h.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
-ATTXParF	bit	20h.5	; TX-AT-Parity bit
-ATTFModF	bit	20h.6	; Timer modifier: alarm clock or clock driver
-MiscSleepF	bit	20h.7	; sleep timer active flag
-ATCommAbort	bit	21h.0	; AT communication aborted
-ATHostToDevIntF	bit	21h.1	; host-do-device init flag triggered by ex1 / unused.
-ATHostToDevF	bit	21h.2	; host-to-device flag for timer
-ATTXActiveF	bit	21h.3	; AT TX active
-ATCmdReceivedF	bit	21h.4	; full and correct AT byte-received
-ATCmdResetF	bit	21h.5	; reset
-ATCmdLedF	bit	21h.6	; AT command processing: set LED
-ATCmdScancodeF	bit	21h.7	; AT command processing: set scancode
-ATKbdDisableF	bit	22h.0	; Keyboard disable
-SunSetLedF	bit	22h.1	; send SetLed Command to sun keyboard: argunent
-SunCtrlLedF	bit	22h.2	; send SetLed Command to sun keyboard: control code
-
 ;------------------ octets
-SunLEDBuf	equ	23h	; must be bit-adressable
+B20		sfrb	20h	; bit adressable space
+B21		sfrb	21h
+B22		sfrb	22h
+SunLEDBuf	sfrb	23h	; must be bit-adressable
 KbBitBufL	equ	24h
 KbBitBufH	equ	25h
 KbClockMin	equ	26h
@@ -82,6 +66,25 @@ ATRXBuf		equ	35h	; AT host-to-dev buffer
 ATRXCount	equ	36h
 ATRXResendBuf	equ	37h	; for AT resend feature
 ;KbClockIntBuf	equ	33h
+
+;------------------ bits
+MiscRXCompleteF	bit	B20.1	; full and correct byte-received
+ATTXBreakF	bit	B20.3	; Release/Break-Code flag
+ATTXMasqF	bit	B20.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
+ATTXParF	bit	B20.5	; TX-AT-Parity bit
+ATTFModF	bit	B20.6	; Timer modifier: alarm clock or clock driver
+MiscSleepF	bit	B20.7	; sleep timer active flag
+ATCommAbort	bit	B21.0	; AT communication aborted
+ATHostToDevIntF	bit	B21.1	; host-do-device init flag triggered by ex1 / unused.
+ATHostToDevF	bit	B21.2	; host-to-device flag for timer
+ATTXActiveF	bit	B21.3	; AT TX active
+ATCmdReceivedF	bit	B21.4	; full and correct AT byte-received
+ATCmdResetF	bit	B21.5	; reset
+ATCmdLedF	bit	B21.6	; AT command processing: set LED
+ATCmdScancodeF	bit	B21.7	; AT command processing: set scancode
+ATKbdDisableF	bit	B22.0	; Keyboard disable
+SunSetLedF	bit	B22.1	; send SetLed Command to sun keyboard: argunent
+SunCtrlLedF	bit	B22.2	; send SetLed Command to sun keyboard: control code
 
 ;------------------ arrays
 RingBuf		equ	40h
@@ -930,7 +933,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.4 2006/12/08 15:51:01 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.5 2007/06/28 10:28:53 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -947,9 +950,9 @@ Start:
 	setb	ea
 
 	; -- clear all flags
-	mov	20h,#0
-	mov	21h,#0
-	mov	22h,#0
+	mov	B20,#0
+	mov	B21,#0
+	mov	B22,#0
 
 	; -- init the ring buffer
 	mov	RingBufPtrIn,#0
@@ -1049,7 +1052,7 @@ LoopSendData:
 	call	timer0_20ms_init
 LoopTXResetDelay:
 	jb	MiscSleepF,LoopTXResetDelay
-	# -- send "self test passed"
+	; -- send "self test passed"
 	mov	r2,#0AAh
 	call	RingBufCheckInsert
 LoopTXWaitDelayEnd:
