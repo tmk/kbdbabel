@@ -2,7 +2,7 @@
 ; Macintosh 128k/512k/Plus to AT/PS2 keyboard transcoder
 ; for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_mac_ps2_8051.asm,v 1.6 2007/06/04 09:14:45 akurz Exp $
+; $KbdBabel: kbdbabel_mac_ps2_8051.asm,v 1.8 2007/06/27 22:00:22 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ;
@@ -26,8 +26,8 @@
 ; Mac communication watchdog	- p1.0
 ;
 ; Build using the macroassembler by Alfred Arnold
-; $ asl kbdbabel_mac_ps2_8051.asm -o kbdbabel_mac_ps2_8051.p
-; $ p2bin -l \$ff kbdbabel_mac_ps2_8051
+; $ asl -L kbdbabel_mac_ps2_8051.asm -o kbdbabel_mac_ps2_8051.p
+; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_mac_ps2_8051
 ; write kbdbabel_mac_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
 ; Copyright 2007 by Alexander Kurz
@@ -44,40 +44,16 @@
 ;----------------------------------------------------------
 ; Variables / Memory layout
 ;----------------------------------------------------------
-;------------------ bits
-;		bit	20h.0	;
-;		bit	20h.1	;
-ATKbdDisableF	bit	20h.2	; Keyboard disable
-ATTXBreakF	bit	20h.3	; Release/Break-Code flag
-ATTXMasqF	bit	20h.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
-ATTXParF	bit	20h.5	; TX-AT-Parity bit
-TFModF		bit	20h.6	; AT Timer modifier: alarm clock or clock driver
-MiscSleepT0F	bit	20h.7	; sleep timer active flag, timer 0
-ATCommAbort	bit	21h.0	; AT communication aborted
-ATHostToDevIntF	bit	21h.1	; host-do-device init flag triggered by ex1 / unused.
-ATHostToDevF	bit	21h.2	; host-to-device flag for timer
-ATTXActiveF	bit	21h.3	; AT TX active
-ATCmdReceivedF	bit	21h.4	; full and correct AT byte-received
-ATCmdResetF	bit	21h.5	; reset
-ATCmdLedF	bit	21h.6	; AT command processing: set LED
-ATCmdScancodeF	bit	21h.7	; AT command processing: set scancode
-MacRXCompleteF	bit	22h.0	; full and correct byte-received
-MiscSleepT1F	bit	22h.1	; sleep timer active flag, timer 1
-MacTFModF	bit	22h.2	; Mac timer modifier, similar to MacClkPostF
-MacClkPostF	bit	22h.3	; post-datagram sleep flag, similar to MacTFModF
-MacClkRXCompleteF	bit	22h.4	; Host-Clock-Driven read finished
-MacClkTXCompleteF	bit	22h.5	; Device-Clock-Driven write finished
-MacTxF		bit	22h.6	; external interrupt RX/TX modifier / TX-Flag
-MacMod2F	bit	22h.7	; 9e scancode received.
-MacMod3F	bit	23h.0	; 8e9e scancode received.
-MacStoredBreakF	bit	23h.1	; stored break bit for shift-scancode, *aaargh*
-
 ;------------------ octets
+B20		sfrb	20h	; bit adressable space
+B21		sfrb	21h
+B22		sfrb	22h
+B23		sfrb	23h
 ;		equ	24h
 ;		equ	25h
 MacBitBuf	equ	26h	; bi-directional Mac communication bit buffer
-MacResetTTL	equ	37h	; long pause
-ATBitCount	equ	28h	; AT scancode TX counter
+MacResetTTL	equ	27h	; long pause
+ATBitCount	sfrb	28h	; AT scancode TX counter
 RawBuf		equ	30h	; raw Mac scancode
 OutputBuf	equ	31h	; AT scancode
 TXBuf		equ	32h	; AT scancode TX buffer
@@ -86,6 +62,34 @@ RingBufPtrOut	equ	34h	; Ring Buffer read pointer, starting with zero
 ATRXBuf		equ	35h	; AT host-to-dev buffer
 ATRXCount	equ	36h
 ATRXResendBuf	equ	37h	; for AT resend feature
+
+;------------------ bits
+ATTXMasqPrtScrF	bit	B20.0	; TX-AT-Masq-Char-Bit (for PrtScr-Key, not implemented here)
+ATTXMasqPauseF	bit	B20.1	; TX-AT-Masq-Char-Bit (for Pause-Key, not implemented here)
+ATTXMasqF	bit	B20.2	; TX-AT-Masq-Char-Bit (send two byte scancode)
+ATKbdDisableF	bit	B20.3	; Keyboard disable
+ATTXBreakF	bit	B20.4	; Release/Break-Code flag
+ATTXParF	bit	B20.5	; TX-AT-Parity bit
+TFModF		bit	B20.6	; AT Timer modifier: alarm clock or clock driver
+MiscSleepT0F	bit	B20.7	; sleep timer active flag, timer 0
+ATCommAbort	bit	B21.0	; AT communication aborted
+ATHostToDevIntF	bit	B21.1	; host-do-device init flag triggered by ex1 / unused.
+ATHostToDevF	bit	B21.2	; host-to-device flag for timer
+ATTXActiveF	bit	B21.3	; AT TX active
+ATCmdReceivedF	bit	B21.4	; full and correct AT byte-received
+ATCmdResetF	bit	B21.5	; reset
+ATCmdLedF	bit	B21.6	; AT command processing: set LED
+ATCmdScancodeF	bit	B21.7	; AT command processing: set scancode
+MacRXCompleteF	bit	B22.0	; full and correct byte-received
+MiscSleepT1F	bit	B22.1	; sleep timer active flag, timer 1
+MacTFModF	bit	B22.2	; Mac timer modifier, similar to MacClkPostF
+MacClkPostF	bit	B22.3	; post-datagram sleep flag, similar to MacTFModF
+MacClkRXCompleteF	bit	B22.4	; Host-Clock-Driven read finished
+MacClkTXCompleteF	bit	B22.5	; Device-Clock-Driven write finished
+MacTxF		bit	B22.6	; external interrupt RX/TX modifier / TX-Flag
+MacMod2F	bit	B22.7	; 9e scancode received.
+MacMod3F	bit	B23.0	; 8e9e scancode received.
+MacStoredBreakF	bit	B23.1	; stored break bit for shift-scancode, *aaargh*
 
 ;------------------ arrays
 RingBuf		equ	40h
@@ -639,7 +643,11 @@ Mac2ATxlt7	DB	 22h,  52h,  2eh,  11h,  2dh,  49h,  44h,  00h
 
 ;----------------------------------------------------------
 ; Mac to AT translaton table
-; Bit-Table for two-byte-AT-Scancodes
+; Bit-Table for multi-byte-AT-Scancodes
+;
+; bit 0: E0-Escape
+; bit 1: send Make E0,12,E0,7C / BreakE0,F0,7C,E0,F0,12 (PrtScr)
+; bit 2: send Make E1,14,77,E1,F0,14,F0,77 (Pause)
 ;----------------------------------------------------------
 Mac2ATxlte0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 Mac2ATxlte1	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -666,7 +674,7 @@ Mac2ATxltB27	DB	 76h,  73h,  00h,  00h	; f0
 
 ;----------------------------------------------------------
 ; Mac to AT translaton table
-; Bit-Table for two-byte-AT-Scancodes
+; Bit-Table for multi-byte-AT-Scancodes
 ;----------------------------------------------------------
 Mac2ATxltB2e0	DB	 00h,  00h,  01h,  00h
 Mac2ATxltB2e1	DB	 00h,  00h,  01h,  00h
@@ -692,7 +700,7 @@ Mac2ATxltB37	DB	 00h,  00h	; f0
 
 ;----------------------------------------------------------
 ; Mac to AT translaton table
-; Bit-Table for two-byte-AT-Scancodes
+; Bit-Table for multi-byte-AT-Scancodes
 ;----------------------------------------------------------
 Mac2ATxltB3e0	DB	 00h,  00h
 Mac2ATxltB3e1	DB	 00h,  00h
@@ -1200,7 +1208,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_mac_ps2_8051.asm,v 1.3 2007/06/04 09:36:44 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_mac_ps2_8051.asm,v 1.4 2007/06/28 10:14:37 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1229,10 +1237,10 @@ InitResetDelay:
 	setb	it0		; falling edge trigger for int 0
 
 	; -- clear all flags
-	mov	20h,#0
-	mov	21h,#0
-	mov	22h,#0
-	mov	23h,#0
+	mov	B20,#0
+	mov	B21,#0
+	mov	B22,#0
+	mov	B23,#0
 
 	; -- init the ring buffer
 	mov	RingBufPtrIn,#0
@@ -1372,7 +1380,7 @@ LoopATRX:
 	; -- receive data on the AT line
 	mov	ATRXCount,#0
 	mov	ATRXBuf,#0
-;	clr     ATHostToDevIntF
+;	clr	ATHostToDevIntF
 	setb	ATHostToDevF
 	call	timer0_init
 
@@ -1403,7 +1411,7 @@ LoopSendData:
 	call	timer0_20ms_init
 LoopTXResetDelay:
 	jb	MiscSleepT0F,LoopTXResetDelay
-	# -- send "self test passed"
+	; -- send "self test passed"
 	mov	r2,#0AAh
 	call	RingBufCheckInsert
 LoopTXWaitDelayEnd:
