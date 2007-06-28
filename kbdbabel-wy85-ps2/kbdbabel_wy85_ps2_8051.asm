@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Wyse WY-85 to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $KbdBabel: kbdbabel_wy85_ps2_8051.asm,v 1.2 2007/06/10 08:40:32 akurz Exp $
+; $KbdBabel: kbdbabel_wy85_ps2_8051.asm,v 1.3 2007/06/27 22:11:56 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz.
 ;
@@ -26,8 +26,8 @@
 ; Int0 active			- p3.7
 ;
 ; Build using the macroassembler by Alfred Arnold
-; $ asl kbdbabel_wy85_ps2_8051.asm -o kbdbabel_wy85_ps2_8051.p
-; $ p2bin -l \$ff kbdbabel_wy85_ps2_8051
+; $ asl -L kbdbabel_wy85_ps2_8051.asm -o kbdbabel_wy85_ps2_8051.p
+; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_wy85_ps2_8051
 ; write kbdbabel_wy85_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
 ; Copyright 2007 by Alexander Kurz
@@ -44,36 +44,18 @@
 ;----------------------------------------------------------
 ; Variables / Memory layout
 ;----------------------------------------------------------
-;------------------ bits
-ATTXMasqPauseF	bit	20h.0	; TX-AT-Masq-Char-Bit (for Pause-Key)
-ATTXMasqPrtScrF	bit	20h.1	; TX-AT-Masq-Char-Bit (for PrtScr-Key)
-ATKbdDisableF	bit	20h.2	; Keyboard disable
-ATTXBreakF	bit	20h.3	; Release/Break-Code flag
-ATTXMasqF	bit	20h.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
-ATTXParF	bit	20h.5	; TX-AT-Parity bit
-TFModF		bit	20h.6	; AT Timer modifier: alarm clock or clock driver
-MiscSleepT0F	bit	20h.7	; sleep timer active flag, timer 0
-ATCommAbort	bit	21h.0	; AT communication aborted
-ATHostToDevIntF	bit	21h.1	; host-do-device init flag triggered by ex1 / unused.
-ATHostToDevF	bit	21h.2	; host-to-device flag for timer
-ATTXActiveF	bit	21h.3	; AT TX active
-ATCmdReceivedF	bit	21h.4	; full and correct AT byte-received
-ATCmdResetF	bit	21h.5	; reset
-ATCmdLedF	bit	21h.6	; AT command processing: set LED
-ATCmdScancodeF	bit	21h.7	; AT command processing: set scancode
-;			bit	22h.0
-RXCompleteF		bit	22h.1	; full and correct byte-received
-TF1ModF			bit	22h.2	; WY85-Timer Modifier:  Sleep=0, Clock-Generator=1
-MiscSleepT1F		bit	22h.3	; sleep timer active flag, timer 1
-WY85ClockF		bit	22h.4	; KC85 Clock transmit active
 ;------------------ octets
+B20		sfrb	20h	; bit adressable space
+B21		sfrb	21h
+B22		sfrb	22h
+B23		sfrb	23h
 InputBitBuf	equ	24h	; Keyboard input bit buffer
-ATBitCount	equ	25h	; AT scancode TX counter
+ATBitCount	sfrb	25h	; AT scancode TX counter
 RawBuf		equ	26h	; raw scancode
 OutputBuf	equ	27h	; AT scancode
 TXBuf		equ	28h	; AT scancode TX buffer
-WY85InBuf	equ	29h	; WY85 bit compare new data buffer, must be bit-adressable
-WY85XORBuf	equ	2ah	; WY85 bit compare XOR-result buffer, must be bit-adressable
+WY85InBuf	sfrb	29h	; WY85 bit compare new data buffer, must be bit-adressable
+WY85XORBuf	sfrb	2ah	; WY85 bit compare XOR-result buffer, must be bit-adressable
 RingBufPtrIn	equ	2eh	; Ring Buffer write pointer, starting with zero
 RingBufPtrOut	equ	2fh	; Ring Buffer read pointer, starting with zero
 ATRXBuf		equ	30h	; AT host-to-dev buffer
@@ -85,11 +67,36 @@ WY85BitCount	equ	35h	; WY85 Bit counter
 WY85ByteCount	equ	36h	; WY85 Byte countera
 WY85XltPtr	equ	37h	; Scancode-Translation-Table-Pinter / Offset
 WY85ByteNum	equ	16	; Number of bytes to be processed
+
+;------------------ bits
+ATTXMasqPauseF	bit	B20.0	; TX-AT-Masq-Char-Bit (for Pause-Key)
+ATTXMasqPrtScrF	bit	B20.1	; TX-AT-Masq-Char-Bit (for PrtScr-Key)
+ATKbdDisableF	bit	B20.2	; Keyboard disable
+ATTXBreakF	bit	B20.3	; Release/Break-Code flag
+ATTXMasqF	bit	B20.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
+ATTXParF	bit	B20.5	; TX-AT-Parity bit
+TFModF		bit	B20.6	; AT Timer modifier: alarm clock or clock driver
+MiscSleepT0F	bit	B20.7	; sleep timer active flag, timer 0
+ATCommAbort	bit	B21.0	; AT communication aborted
+ATHostToDevIntF	bit	B21.1	; host-do-device init flag triggered by ex1 / unused.
+ATHostToDevF	bit	B21.2	; host-to-device flag for timer
+ATTXActiveF	bit	B21.3	; AT TX active
+ATCmdReceivedF	bit	B21.4	; full and correct AT byte-received
+ATCmdResetF	bit	B21.5	; reset
+ATCmdLedF	bit	B21.6	; AT command processing: set LED
+ATCmdScancodeF	bit	B21.7	; AT command processing: set scancode
+;		bit	B22.0
+RXCompleteF	bit	B22.1	; full and correct byte-received
+TF1ModF		bit	B22.2	; WY85-Timer Modifier:  Sleep=0, Clock-Generator=1
+MiscSleepT1F	bit	B22.3	; sleep timer active flag, timer 1
+WY85ClockF	bit	B22.4	; KC85 Clock transmit active
+
 ;------------------ arrays
 WY85BitBuf1	equ	38h	; size is 20 byte
 WY85BitBuf2	equ	4ch	; size is 20 byte
 RingBuf		equ	60h
 RingBufSizeMask	equ	0fh	; 16 byte ring-buffer size
+
 ;------------------ stack
 StackBottom	equ	70h	; the stack
 
@@ -1214,7 +1221,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_wy85_ps2_8051.asm,v 1.1 2007/06/10 08:48:49 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_wy85_ps2_8051.asm,v 1.2 2007/06/28 10:36:21 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1247,10 +1254,10 @@ InitResetDelay:
 	clr	ex1		; external interupt 1 enable
 
 	; -- clear all flags
-	mov	20h,#0
-	mov	21h,#0
-	mov	22h,#0
-	mov	23h,#0
+	mov	B20,#0
+	mov	B21,#0
+	mov	B22,#0
+	mov	B23,#0
 	setb	ATKbdDisableF
 
 	; -- init the ring buffer
@@ -1349,7 +1356,7 @@ LoopTXResetDelay:
 	; -- init the WY85-state buffer
 	call	DeltaKeyState
 	clr	ATKbdDisableF
-	# -- send "self test passed"
+	; -- send "self test passed"
 	mov	r2,#0AAh
 	call	RingBufCheckInsert
 LoopTXWaitDelayEnd:
