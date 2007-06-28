@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; PC/XT to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.38 2007/06/09 16:59:13 akurz Exp $
+; $Id: kbdbabel_pcxt_ps2_8051.asm,v 1.6 2007/06/28 10:21:34 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz or alternative 22.1184MHz or 18.432MHz.
 ; Note: PC/XT data bits are sampled on negative clock slope.
@@ -30,8 +30,8 @@
 ; TX buffer full		- p1.0
 ;
 ; Build using the macroassembler by Alfred Arnold
-; $ asl kbdbabel_pcxt_ps2_8051.asm -o kbdbabel_pcxt_ps2_8051.p
-; $ p2bin -l \$ff kbdbabel_pcxt_ps2_8051
+; $ asl -L kbdbabel_pcxt_ps2_8051.asm -o kbdbabel_pcxt_ps2_8051.p
+; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_pcxt_ps2_8051
 ; write kbdbabel_pcxt_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
 ; Copyright 2006, 2007 by Alexander Kurz
@@ -48,33 +48,16 @@
 ;----------------------------------------------------------
 ; Variables / Memory layout
 ;----------------------------------------------------------
-;------------------ bits
-PCRXBitF	bit	20h.0	; RX-bit-buffer
-PCRXCompleteF	bit	20h.1	; full and correct byte-received
-PCRXActiveF	bit	20h.2	; receive in progress flag
-ATTXBreakF	bit	20h.3	; Release/Break-Code flag
-ATTXMasqF	bit	20h.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
-ATTXParF	bit	20h.5	; TX-AT-Parity bit
-TFModF		bit	20h.6	; Timer modifier: alarm clock or clock driver
-MiscSleepF	bit	20h.7	; sleep timer active flag
-ATCommAbort	bit	21h.0	; AT communication aborted
-ATHostToDevIntF	bit	21h.1	; host-do-device init flag triggered by ex1 / unused.
-ATHostToDevF	bit	21h.2	; host-to-device flag for timer
-ATTXActiveF	bit	21h.3	; AT TX active
-ATCmdReceivedF	bit	21h.4	; full and correct AT byte-received
-ATCmdResetF	bit	21h.5	; reset
-ATCmdLedF	bit	21h.6	; AT command processing: set LED
-ATCmdScancodeF	bit	21h.7	; AT command processing: set scancode
-ATKbdDisableF	bit	22h.0	; Keyboard disable
-ATTXMasqPrtScrF	bit	22h.1	; TX-AT-Masq-Char-Bit (for PrtScr-Key)
-ATTXMasqPauseF	bit	22h.2	; TX-AT-Masq-Char-Bit (for Pause-Key, not implemented here)
-
 ;------------------ octets
-KbBitBufL	equ	24h
-KbBitBufH	equ	25h
+B20		sfrb	20h	; bit adressable space
+B21		sfrb	21h
+B22		sfrb	22h
+B23		sfrb	23h
+KbBitBufL	sfrb	24h
+KbBitBufH	sfrb	25h
 KbClockMin	equ	26h
 KbClockMax	equ	27h
-ATBitCount	equ	28h	; AT scancode TX counter
+ATBitCount	sfrb	28h	; AT scancode TX counter
 RawBuf		equ	30h	; raw PC/XT scancode
 OutputBuf	equ	31h	; AT scancode
 TXBuf		equ	32h	; AT scancode TX buffer
@@ -83,6 +66,27 @@ RingBufPtrOut	equ	34h	; Ring Buffer read pointer, starting with zero
 ATRXBuf		equ	35h	; AT host-to-dev buffer
 ATRXCount	equ	36h
 ATRXResendBuf	equ	37h	; for AT resend feature
+
+;------------------ bits
+PCRXBitF	bit	B20.0	; RX-bit-buffer
+PCRXCompleteF	bit	B20.1	; full and correct byte-received
+PCRXActiveF	bit	B20.2	; receive in progress flag
+ATTXBreakF	bit	B20.3	; Release/Break-Code flag
+ATTXMasqF	bit	B20.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
+ATTXParF	bit	B20.5	; TX-AT-Parity bit
+TFModF		bit	B20.6	; Timer modifier: alarm clock or clock driver
+MiscSleepF	bit	B20.7	; sleep timer active flag
+ATCommAbort	bit	B21.0	; AT communication aborted
+ATHostToDevIntF	bit	B21.1	; host-do-device init flag triggered by ex1 / unused.
+ATHostToDevF	bit	B21.2	; host-to-device flag for timer
+ATTXActiveF	bit	B21.3	; AT TX active
+ATCmdReceivedF	bit	B21.4	; full and correct AT byte-received
+ATCmdResetF	bit	B21.5	; reset
+ATCmdLedF	bit	B21.6	; AT command processing: set LED
+ATCmdScancodeF	bit	B21.7	; AT command processing: set scancode
+ATKbdDisableF	bit	B22.0	; Keyboard disable
+ATTXMasqPrtScrF	bit	B22.1	; TX-AT-Masq-Char-Bit (for PrtScr-Key)
+ATTXMasqPauseF	bit	B22.2	; TX-AT-Masq-Char-Bit (for Pause-Key, not implemented here)
 
 ;------------------ arrays
 RingBuf		equ	40h
@@ -1192,7 +1196,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.5 2007/06/09 17:43:46 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.6 2007/06/28 10:21:34 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1222,9 +1226,10 @@ InitResetDelay:
 	setb	it0		; falling edge trigger for int 0
 
 	; -- clear all flags
-	mov	20h,#0
-	mov	21h,#0
-	mov	22h,#0
+	mov	B20,#0
+	mov	B21,#0
+	mov	B22,#0
+	mov	B23,#0
 
 	; -- init the ring buffer
 	mov	RingBufPtrIn,#0
@@ -1307,7 +1312,7 @@ LoopSendData:
 	call	timer0_20ms_init
 LoopTXResetDelay:
 	jb	MiscSleepF,LoopTXResetDelay
-	# -- send "self test passed"
+	; -- send "self test passed"
 	mov	r2,#0AAh
 	call	RingBufCheckInsert
 LoopTXWaitDelayEnd:
