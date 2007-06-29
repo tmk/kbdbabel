@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; DEC LK to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_lk_ps2_8051.asm,v 1.6 2007/04/25 08:33:23 akurz Exp $
+; $KbdBabel: kbdbabel_lk_ps2_8051.asm,v 1.8 2007/06/29 08:59:54 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ; alternatively 18.432MHz and 14.7456 may be used.
@@ -28,11 +28,11 @@
 ; TX buffer full		- p1.0
 ;
 ; Build:
-; $ asl kbdbabel_lk_ps2_8051.asm -o kbdbabel_lk_ps2_8051.p
-; $ p2bin -l \$ff kbdbabel_lk_ps2_8051
+; $ asl -L kbdbabel_lk_ps2_8051.asm -o kbdbabel_lk_ps2_8051.p
+; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_lk_ps2_8051
 ; write kbdbabel_lk_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
-; Copyright 2006 by Alexander Kurz
+; Copyright 2006, 2007 by Alexander Kurz
 ;
 ; This is free software.
 ; You may copy and redistibute this software according to the
@@ -46,38 +46,13 @@
 ;----------------------------------------------------------
 ; Variables / Memory layout
 ;----------------------------------------------------------
-;------------------ bits
-MiscRXCompleteF	bit	20h.1	; full and correct byte-received
-ATTXBreakF	bit	20h.3	; Release/Break-Code flag
-ATTXMasqF	bit	20h.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
-ATTXParF	bit	20h.5	; TX-AT-Parity bit
-ATTFModF	bit	20h.6	; Timer modifier: alarm clock or clock driver
-MiscSleepF	bit	20h.7	; sleep timer active flag
-ATCommAbort	bit	21h.0	; AT communication aborted
-ATHostToDevIntF	bit	21h.1	; host-do-device init flag triggered by ex1 / unused.
-ATHostToDevF	bit	21h.2	; host-to-device flag for timer
-ATTXActiveF	bit	21h.3	; AT TX active
-ATCmdReceivedF	bit	21h.4	; full and correct AT byte-received
-ATCmdResetF	bit	21h.5	; reset
-ATCmdLedF	bit	21h.6	; AT command processing: set LED
-ATCmdScancodeF	bit	21h.7	; AT command processing: set scancode
-ATKbdDisableF	bit	22h.0	; Keyboard disable
-LKLEDSetF	bit	22h.1	; SetLed command to for keyboard: argument
-LKLEDCtrl1F	bit	22h.2	; SetLed command to for keyboard: command 1
-LKLEDCtrl2F	bit	22h.3	; SetLed command to for keyboard: command 1
-LKLEDCtrl3F	bit	22h.4	; SetLed command to for keyboard: command 1
-LKSKeyF		bit	22h.5	; shift or control key
-
-LKModSL		bit	23h.0	; LK modifier state storage: left shift
-LKModSR		bit	23h.1	; LK modifier state storage: right shift
-LKModAL		bit	23h.2	; LK modifier state storage: left alt
-LKModAR		bit	23h.3	; LK modifier state storage: right alt
-LKModC		bit	23h.4	; LK modifier state storage: ctrl
-
 ;------------------ octets
-LKModAll	equ	23h	; collective access to stored LK modifier flags
-LKModBuf	equ	24h	; translated received modifier codes
-LKLEDBuf	equ	25h	; must be bit-adressable
+B20		sfrb	20h	; bit adressable space
+B21		sfrb	21h
+B22		sfrb	22h
+LKMod		sfrb	23h	; collective access to stored LK modifier flags
+LKModBuf	sfrb	24h	; translated received modifier codes
+LKLEDBuf	sfrb	25h	; must be bit-adressable
 KbBitBufL	equ	26h
 KbBitBufH	equ	27h
 KbClockMin	equ	28h
@@ -93,6 +68,35 @@ ATRXCount	equ	36h
 ATRXResendBuf	equ	37h	; for AT resend feature
 LKMetronomBuf	equ	38h	; LK metronom feature / typematic buffer
 ATBrkLedSBuf	equ	39h	; "send the break code later" buffer for Caps/Scroll/NumLock keys
+
+;------------------ bits
+MiscRXCompleteF	bit	B20.1	; full and correct byte-received
+ATTXBreakF	bit	B20.3	; Release/Break-Code flag
+ATTXMasqF	bit	B20.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
+ATTXParF	bit	B20.5	; TX-AT-Parity bit
+ATTFModF	bit	B20.6	; Timer modifier: alarm clock or clock driver
+MiscSleepF	bit	B20.7	; sleep timer active flag
+ATCommAbort	bit	B21.0	; AT communication aborted
+ATHostToDevIntF	bit	B21.1	; host-do-device init flag triggered by ex1 / unused.
+ATHostToDevF	bit	B21.2	; host-to-device flag for timer
+ATTXActiveF	bit	B21.3	; AT TX active
+ATCmdReceivedF	bit	B21.4	; full and correct AT byte-received
+ATCmdResetF	bit	B21.5	; reset
+ATCmdLedF	bit	B21.6	; AT command processing: set LED
+ATCmdScancodeF	bit	B21.7	; AT command processing: set scancode
+ATKbdDisableF	bit	B22.0	; Keyboard disable
+LKLEDSetF	bit	B22.1	; SetLed command to for keyboard: argument
+LKLEDCtrl1F	bit	B22.2	; SetLed command to for keyboard: command 1
+LKLEDCtrl2F	bit	B22.3	; SetLed command to for keyboard: command 1
+LKLEDCtrl3F	bit	B22.4	; SetLed command to for keyboard: command 1
+LKSKeyF		bit	B22.5	; shift or control key
+
+LKModSL		bit	LKMod.0	; LK modifier state storage: left shift
+LKModSR		bit	LKMod.1	; LK modifier state storage: right shift
+LKModAL		bit	LKMod.2	; LK modifier state storage: left alt
+LKModAR		bit	LKMod.3	; LK modifier state storage: right alt
+LKModC		bit	LKMod.4	; LK modifier state storage: ctrl
+
 ;------------------ arrays
 RingBuf		equ	40h
 RingBufSizeMask	equ	0fh	; 16 byte ring-buffer size
@@ -506,25 +510,25 @@ timerRXEnd:				; total 7
 ;----------------------------------------------------------
 ; DEC LK to AT translaton table
 ; Position: DEC-LK scancode, Value: AT-PS2 scancode
-; note: Prog1 0a1h=Esc, Prog2 0a2h=NumLock, Prog3 0a3h=ScrollLock
+; note:	PF1 0a1h=NumLock, PF2 0a2h=ScrollLock,
+;	PF3 0a3h=KP/, PF4 0a4h=KP*, F17=Escape
 ;----------------------------------------------------------
-
-lk2atxlt0	DB	000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
-lk2atxlt1	DB	000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
-lk2atxlt2	DB	000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
-lk2atxlt3	DB	000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
-lk2atxlt4	DB	000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
-lk2atxlt5	DB	000h, 000h, 000h, 000h, 000h, 000h, 005h, 006h,  004h, 00ch, 003h, 000h, 000h, 000h, 000h, 000h
-lk2atxlt6	DB	000h, 000h, 000h, 000h, 00bh, 002h, 00ah, 001h,  009h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
-lk2atxlt7	DB	000h, 078h, 007h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h
-lk2atxlt8	DB	000h, 000h, 000h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 06ch, 070h, 071h, 069h, 07dh, 07ah
-lk2atxlt9	DB	000h, 000h, 070h, 000h, 071h, 079h, 069h, 072h,  07ah, 06bh, 073h, 074h, 07ch, 06ch, 075h, 07dh
-lk2atxlta	DB	07bh, 076h, 077h, 07eh, 04ah, 000h, 000h, 06bh,  074h, 072h, 075h, 059h, 011h, 000h, 012h, 014h
-lk2atxltb	DB	058h, 000h, 011h, 000h, 000h, 000h, 000h, 000h,  000h, 000h, 000h, 000h, 066h, 05ah, 00dh, 00eh
-lk2atxltc	DB	016h, 015h, 01ch, 01ah, 000h, 01eh, 01dh, 01bh,  022h, 061h, 000h, 026h, 024h, 023h, 021h, 000h
-lk2atxltd	DB	025h, 02dh, 02bh, 02ah, 029h, 000h, 02eh, 02ch,  034h, 032h, 000h, 036h, 035h, 033h, 031h, 000h
-lk2atxlte	DB	03dh, 03ch, 03bh, 03ah, 000h, 03eh, 043h, 042h,  041h, 000h, 046h, 044h, 04bh, 049h, 000h, 045h
-lk2atxltf	DB	04dh, 000h, 04ch, 04ah, 000h, 055h, 05bh, 05dh,  000h, 04eh, 054h, 076h, 000h, 000h, 000h, 000h
+lk2atxlt0	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlt1	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlt2	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlt3	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlt4	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlt5	DB	  0h,   0h,   0h,   0h,   0h,   0h,  05h,  06h,   04h,  0ch,  03h,   0h,   0h,   0h,   0h,   0h
+lk2atxlt6	DB	  0h,   0h,   0h,   0h,  0bh,  83h,  0ah,  01h,   09h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlt7	DB	  0h,  78h,  07h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlt8	DB	 76h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,  6ch,  70h,  71h,  69h,  7dh,  7ah
+lk2atxlt9	DB	  0h,   0h,  70h,   0h,  71h,  5ah,  69h,  72h,   7ah,  6bh,  73h,  74h,  79h,  6ch,  75h,  7dh
+lk2atxlta	DB	 7bh,  77h,  7eh,  4ah,  7ch,   0h,   0h,  6bh,   74h,  72h,  75h,  59h,  11h,  11h,  12h,  14h
+lk2atxltb	DB	 58h,  11h,  11h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,  66h,  5ah,  0dh,  0eh
+lk2atxltc	DB	 16h,  15h,  1ch,  1ah,   0h,  1eh,  1dh,  1bh,   22h,  61h,   0h,  26h,  24h,  23h,  21h,   0h
+lk2atxltd	DB	 25h,  2dh,  2bh,  2ah,  29h,   0h,  2eh,  2ch,   34h,  32h,   0h,  36h,  35h,  33h,  31h,   0h
+lk2atxlte	DB	 3dh,  3ch,  3bh,  3ah,   0h,  3eh,  43h,  42h,   41h,   0h,  46h,  44h,  4bh,  49h,   0h,  45h
+lk2atxltf	DB	 4dh,   0h,  4ch,  4ah,   0h,  55h,  5bh,  5dh,    0h,  4eh,  54h,  52h,   0h,   0h,   0h,   0h
 
 ;----------------------------------------------------------
 ; DEC LK to AT translaton table
@@ -539,22 +543,22 @@ lk2atxltf	DB	04dh, 000h, 04ch, 04ah, 000h, 055h, 05bh, 05dh,  000h, 04eh, 054h, 
 ;   bit 6: keyboard LED modifying code, Caps/Num/Scroll Lock
 ;   bit 7: all modifiers released
 ;----------------------------------------------------------
-lk2atxlts0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts1	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts2	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts5	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlts9	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltsa	DB	 00h,  00h,  40h,  40h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  02h,  04h,  00h,  01h,  10h
-lk2atxltsb	DB	 40h,  00h,  08h, 0f0h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltsc	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltsd	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltse	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltsf	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
+lk2atxlts0	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts1	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts2	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts3	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts4	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts5	DB	  0h,   0h,   0h,   0h,   0h,  01h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts6	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts7	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts8	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlts9	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltsa	DB	  0h,  40h,  40h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,  02h,  04h,  08h,  01h,  10h
+lk2atxltsb	DB	 40h,  04h,  08h, 0f0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltsc	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltsd	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltse	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltsf	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 
 ;----------------------------------------------------------
 ; DEC LK to AT translaton table
@@ -563,22 +567,22 @@ lk2atxltsf	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,
 ;	this space-consuming lookup table. Does not look nice,
 ;	but it is easy to read and will execute fast.
 ;----------------------------------------------------------
-lk2atxlte0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlte1	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlte2	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlte3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlte4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlte5	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlte6	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlte7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlte8	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  01h,  01h,  01h,  01h,  01h,  01h
-lk2atxlte9	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltea	DB	 00h,  00h,  00h,  00h,  01h,  00h,  00h,  01h,   01h,  01h,  01h,  00h,  01h,  00h,  00h,  00h
-lk2atxlteb	DB	 00h,  00h,  01h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltec	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxlted	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltee	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-lk2atxltef	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
+lk2atxlte0	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlte1	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlte2	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlte3	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlte4	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlte5	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlte6	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlte7	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlte8	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,  01h,  01h,  01h,  01h,  01h,  01h
+lk2atxlte9	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltea	DB	  0h,   0h,   0h,  01h,   0h,   0h,   0h,  01h,   01h,  01h,  01h,   0h,   0h,  01h,   0h,   0h
+lk2atxlteb	DB	  0h,   0h,  01h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltec	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxlted	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltee	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+lk2atxltef	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 
 ;----------------------------------------------------------
 ; ring buffer insertion helper. Input Data comes in r2
@@ -615,15 +619,6 @@ TranslateToBufLK:
 	; translate from DEC LK to AT scancode
 	mov	a,RawBuf
 
-	; --  translate LK to AT scancode
-	; check for 2-byte PS2-scancodes
-	mov	r4,a
-	mov	dptr,#LK2ATxlte0
-	movc	a,@a+dptr
-	mov	c,acc.0
-	mov	ATTXMasqF,c
-	mov	a,r4
-
 	; --------- check for LK shift and control keys
 	; converting LK shift/ctrl/alt state to PS2 requires a bit more code.
 	; LK scancodes do not feature Make- and Break-Codes like PS2
@@ -645,7 +640,7 @@ TranslateToBufLKMod:
 
 	; ------ Make or Multi-Modifier
 	; either a new modifier is pressed or
-	; am modifier is released while an other modifier is still held down
+	; a modifier is released while an other modifier is still held down
 	;
 	; -- send E0 Escape codes for multi-mod release, e.g. Alt-R
 	mov	a,LKModBuf
@@ -655,7 +650,7 @@ TranslateToBufLKMod:
 
 TranslateToBufLKNoMultiAR:
 	; --- send break on key release
-	anl	a,LKModAll
+	anl	a,LKMod
 	jz	TranslateToBufLKNoMultiModRelease
 	mov	r2,#0F0h
 	call	RingBufCheckInsert
@@ -704,7 +699,7 @@ TranslateToBufLKClrMod:
 	; the last modifier key is released here.
 	;
 	; -- check on what cannot happen ...
-	mov	a,LKModAll
+	mov	a,LKMod
 	jz	TranslateToBufLKReleaseEnd
 
 	; -- Escape-code for Alt-R
@@ -718,7 +713,7 @@ TranslateToBufLKClrModEXAR:
 	mov	r2,#0F0h
 	call	RingBufCheckInsert
 
-	mov	a,LKModAll
+	mov	a,LKMod
 	jb	acc.0, TranslateToBufLKReleaseSL
 	jb	acc.1, TranslateToBufLKReleaseSR
 	jb	acc.2, TranslateToBufLKReleaseAL
@@ -748,7 +743,7 @@ TranslateToBufLKReleaseC:
 	call	RingBufCheckInsert
 
 TranslateToBufLKReleaseEnd:
-	mov	LKModAll, #0
+	mov	LKMod, #0
 	sjmp	TranslateToBufLKEnd
 
 TranslateToBufLKModEnd:
@@ -765,8 +760,16 @@ TranslateToBufLKModEnd:
 TranslateToBufLKNoMetronom:
 	mov	LKMetronomBuf,a
 
-
 TranslateToBufLKGo:
+	; -- check for 2-byte PS2-scancodes
+	mov	r4,a
+	mov	dptr,#LK2ATxlte0
+	movc	a,@a+dptr
+	mov	c,acc.0
+	mov	ATTXMasqF,c
+	mov	a,r4
+
+	; -- translate scancode
 	mov	dptr,#LK2ATxlt0
 	movc	a,@a+dptr
 	mov	OutputBuf,a
@@ -1134,7 +1137,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_lk_ps2_8051.asm,v 1.3 2007/04/25 08:41:49 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_lk_ps2_8051.asm,v 1.4 2007/06/29 09:03:50 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1151,9 +1154,9 @@ Start:
 	acall	timer0_diag_init
 
 	; -- clear all flags
-	mov	20h,#0
-	mov	21h,#0
-	mov	22h,#0
+	mov	B20,#0
+	mov	B21,#0
+	mov	B22,#0
 
 	; -- init the ring buffer
 	mov	RingBufPtrIn,#0
@@ -1265,7 +1268,7 @@ LoopSendData:
 	call	timer0_20ms_init
 LoopTXResetDelay:
 	jb	MiscSleepF,LoopTXResetDelay
-	# -- send "self test passed"
+	; -- send "self test passed"
 	mov	r2,#0AAh
 	call	RingBufCheckInsert
 LoopTXWaitDelayEnd:
@@ -1350,4 +1353,5 @@ GPL_S1	DB	" This program is free software; licensed under the terms of the GNU G
 ;GPL09	DB	" GNU General Public License for more details."
 ;GPL10	DB	" "
 ; ----------------
+
 	end
