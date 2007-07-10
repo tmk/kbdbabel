@@ -2,7 +2,7 @@
 ; KbdBabel Common constants and definitions
 ; for various keyboard interval und timing issues.
 ;
-; $KbdBabel: kbdbabel_intervals.inc,v 1.1 2007/07/09 09:30:45 akurz Exp $
+; $KbdBabel: kbdbabel_intervals.inc,v 1.2 2007/07/09 22:19:59 akurz Exp $
 ;
 ; Copyright 2007 by Alexander Kurz
 ;
@@ -87,6 +87,13 @@ interval_t1_125u_22118_4k	equ	26
 ; 125mus@24.000MHz -> th0 and tl0=6 or 250 processor cycles	; (256-24000*0.125/12)
 interval_t1_125u_24M		equ	6
 
+;------------------ Mac scancode timing intervals generated with timer 1 in 8 bit mode
+; 200mus@11.0592MHz -> th0 and tl0=72 or 184 processor cycles	; (256-11059.2*0.2/12)
+interval_t1_200u_11059_2k	equ	72
+
+; 150mus@11.0592MHz -> th0 and tl0=118 or 138 processor cycles	; (256-11059.2*0.15/12)
+interval_t1_150u_11059_2k	equ	118
+
 ;----------------------------------------------------------
 ; misc 16-bit constants
 ;----------------------------------------------------------
@@ -116,6 +123,10 @@ interval_tl_150u_11059_2k	equ	118
 interval_th_130u_11059_2k	equ	255
 interval_tl_130u_11059_2k	equ	136
 
+; 40mus@11.0592MHz -> th0,tl0=0ffh,dch	; (65536-11059.2*0.04/12)
+interval_th_40u_11059_2k	equ	255
+interval_tl_40u_11059_2k	equ	220
+
 ; --- 18.432MHz
 ; 20ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*20/12)
 interval_th_20m_18432k		equ	136
@@ -140,6 +151,10 @@ interval_tl_150u_18432k		equ	25
 ; 0.13ms@18.432MHz -> th0,tl0=0ffh,38h	; (65536-18432*0.13/12)
 interval_th_130u_18432k		equ	255
 interval_tl_130u_18432k		equ	56
+
+; 40mus@18.432MHz -> th0,tl0=0ffh,C3h	; (256-18432*0.04/12) (65536-18432*0.04/12)
+interval_th_40u_18432k		equ	255
+interval_tl_40u_18432k		equ	194
 
 ; --- 22.1184MHz
 ; 20ms@22.1184MHz -> th0,tl0=70h,00h	; (65536-22118.4*20/12)
@@ -166,6 +181,10 @@ interval_tl_15u_22118_4k	equ	237
 interval_th_128u_22118_4k	equ	255
 interval_tl_128u_22118_4k	equ	20
 
+; 40mus@22.1184MHz -> th0,tl0=0ffh,b7h	; (65536-22118.4*0.04/12)
+interval_th_40u_22118_4k	equ	255
+interval_tl_40u_22118_4k	equ	183
+
 ; --- 24.000MHz
 ; 20ms@24.000MHz -> th0,tl0=63h,0c0h	; (65536-24000*20/12)
 interval_th_20m_24M		equ	99
@@ -190,6 +209,10 @@ interval_tl_15u_24M		equ	212
 ; 0.128ms@24.000MHz -> th0,tl0=0ffh,00h	; (65536-24000*.128/12)
 interval_th_128u_24M		equ	255
 interval_tl_128u_24M		equ	0
+
+; 40mus@24MHz -> th0,tl0=0ffh,b0h	; (65536-24000*0.04/12)
+interval_th_40u_24M		equ	255
+interval_tl_40u_24M		equ	176
 
 ;------------------ PCXT RX timeout and interval diagnosis using timer 0 in 16 bit mode
 ; --- 11 bit for timing diagnosis
