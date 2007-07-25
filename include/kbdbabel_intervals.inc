@@ -2,7 +2,7 @@
 ; KbdBabel Common constants and definitions
 ; for various keyboard interval und timing issues.
 ;
-; $KbdBabel: kbdbabel_intervals.inc,v 1.2 2007/07/09 22:19:59 akurz Exp $
+; $KbdBabel: kbdbabel_intervals.inc,v 1.3 2007/07/25 09:51:05 akurz Exp $
 ;
 ; Copyright 2007 by Alexander Kurz
 ;
@@ -126,6 +126,35 @@ interval_tl_130u_11059_2k	equ	136
 ; 40mus@11.0592MHz -> th0,tl0=0ffh,dch	; (65536-11059.2*0.04/12)
 interval_th_40u_11059_2k	equ	255
 interval_tl_40u_11059_2k	equ	220
+
+; --- 12.000MHz
+; 20ms@12.000MHz -> th0,tl0=b1h,0e0h	; (65536-12000*20/12)
+interval_th_20m_12M		equ	177
+interval_tl_20m_12M		equ	224
+
+; 10ms@12.000MHz -> th0,tl0=0d8h,f0h	; (65536-12000*10/12)
+interval_th_10m_12M		equ	216
+interval_tl_10m_12M		equ	240
+
+; 1ms@12.000MHz -> th0,tl0=0fch,18h	; (65536-12000*1/12)
+interval_th_1m_12M		equ	252
+interval_tl_1m_12M		equ	24
+
+; 0.3ms@12.000MHz -> th0,tl0=0feh,d4h	; (65536-12000*.3/12)
+interval_th_300u_12M		equ	254
+interval_tl_300u_12M		equ	212
+
+; 0.15ms@12.000MHz -> th0,tl0=0ffh,6ah	; (65536-12000*.15/12)
+interval_th_15u_12M		equ	255
+interval_tl_15u_12M		equ	106
+
+; 0.128ms@12.000MHz -> th0,tl0=0ffh,80h	; (65536-12000*.128/12)
+interval_th_128u_12M		equ	255
+interval_tl_128u_12M		equ	128
+
+; 40mus@12MHz -> th0,tl0=0ffh,d8h	; (65536-12000*0.04/12)
+interval_th_40u_12M		equ	255
+interval_tl_40u_12M		equ	216
 
 ; --- 18.432MHz
 ; 20ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*20/12)
