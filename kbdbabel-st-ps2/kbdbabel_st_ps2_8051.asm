@@ -1,9 +1,9 @@
 ; ---------------------------------------------------------------------
 ; Atari ST to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_st_ps2_8051.asm,v 1.1 2007/07/09 09:32:10 akurz Exp $
+; $KbdBabel: kbdbabel_st_ps2_8051.asm,v 1.2 2007/07/25 09:51:44 akurz Exp $
 ;
-; Clock/Crystal: 24MHz, development version.
+; Clock/Crystal: 12MHz.
 ;
 ; Atari Keyboard connect:
 ; RxD - p3.0 (Pin 10 on DIL40, Pin 2 on AT89C2051 PDIP20)
@@ -744,8 +744,8 @@ uart_timer1_init:
 	mov	scon, #050h	; uart mode 1 (8 bit), single processor
 	orl	tmod, #020h	; M0,M1, bit4,5 in TMOD, timer 1 in mode 2, 8bit-auto-reload
 	orl	pcon, #080h	; SMOD, bit 7 in PCON
-	mov	th1, #uart_t1_7k8125_24M
-	mov	tl1, #uart_t1_7k8125_24M
+	mov	th1, #uart_t1_7k8125_12M
+	mov	tl1, #uart_t1_7k8125_12M
 	clr	es		; disable serial interrupt
 	setb	tr1
 
@@ -762,8 +762,8 @@ timer0_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #02h;	; 8-bit Auto-Reload Timer, mode 2
-	mov	th0, #interval_t0_40u_24M
-	mov	tl0, #interval_t0_40u_24M
+	mov	th0, #interval_t0_45u_12M
+	mov	tl0, #interval_t0_45u_12M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	setb	TFModF		; see timer 0 interrupt code
 	clr	ATCommAbort	; communication abort flag
@@ -778,8 +778,8 @@ timer0_diag_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #01h;	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
-	mov	th0, #interval_th_128u_24M
-	mov	tl0, #interval_tl_128u_24M
+	mov	th0, #interval_th_128u_12M
+	mov	tl0, #interval_tl_128u_12M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	clr	TFModF		; see timer 0 interrupt code
 	setb	MiscSleepT0F
@@ -793,8 +793,8 @@ timer0_20ms_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all upper bits
 	orl	tmod, #01h;	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
-	mov	th0, #interval_th_20m_24M
-	mov	tl0, #interval_tl_20m_24M
+	mov	th0, #interval_th_20m_12M
+	mov	tl0, #interval_tl_20m_12M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	clr	TFModF		; see timer 0 interrupt code
 	setb	MiscSleepT0F
@@ -804,7 +804,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_st_ps2_8051.asm,v 1.1 2007/07/09 09:54:39 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_st_ps2_8051.asm,v 1.2 2007/07/25 09:55:36 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
