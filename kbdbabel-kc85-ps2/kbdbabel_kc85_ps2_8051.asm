@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Robotron KC-85 to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $KbdBabel: kbdbabel_kc85_ps2_8051.asm,v 1.7 2007/07/31 23:00:06 akurz Exp $
+; $KbdBabel: kbdbabel_kc85_ps2_8051.asm,v 1.8 2007/08/01 09:28:52 akurz Exp $
 ;
 ; Clock/Crystal: 12MHz.
 ;
@@ -88,6 +88,7 @@ KC85DataBitValid	bit	B22.3	; time dependant data valid bit, set by TF1-Handler
 KC85WordTimeoutF	bit	B22.4	; Timeout for 7-bit words.
 KC85ClockTimeoutF	bit	B22.5	; Maximum interval time expired.
 KC85ShiftF		bit	B22.6	; An extra bit for Shift
+ATShiftF		bit	B22.7	; stored AT shift state
 ;------------------ arrays
 RingBuf		equ	40h
 RingBufSizeMask	equ	0fh	; 16 byte ring-buffer size
@@ -173,14 +174,12 @@ Int0Return:
 ; timer 1 int handler:
 ; KC-85 Keyboard interval timing.
 ; Using 125 microseconds as interval results in this state table:
-; < 4.5ms	< 35 cycles	invalid
-; 4.5-6.7ms	35-53 cycles	valid 0
-; 6.7-8.9ms	54-71 cycles	valid 1
-; 8.9-13.1	72-1 04 cycles	invalid
-; 13.1-18.1ms	104-145 cycles	inter-character interval
-; > 18.1ms	> 145 cycles	key-release timeout
-;
-; all interval values corrected by -10%. FIXME
+; < 4.0ms	< 32 cycles	invalid
+; 4.0-5.9ms	32-46 cycles	valid 0
+; 5.9-8.0ms	47-63 cycles	valid 1
+; 8.0-12.5	64-99 cycles	invalid
+; 12.5-17.5ms	100-140 cycles	inter-character interval
+; > 17.5ms	> 140 cycles	key-release timeout
 ;----------------------------------------------------------
 HandleTF1:
 	push	acc
@@ -191,17 +190,17 @@ HandleTF1:
 	; --- check count < 32
 	subb	a,#32
 	jc	timer1StateInvalid
-	; --- check count < 48
-	subb	a,#16
+	; --- check count < 47
+	subb	a,#15
 	jc	timer1StateValid0
 	; --- check count < 64
-	subb	a,#16
+	subb	a,#17
 	jc	timer1StateValid1
-	; --- check count < 93, state invalid
-	subb	a,#29
-	jc	timer1StateInvalid
-	; --- check count < 129
+	; --- check count < 100, state invalid
 	subb	a,#36
+	jc	timer1StateInvalid
+	; --- check count < 140
+	subb	a,#40
 	jc	timer1InterChar
 ; -----------------
 ; --- Repeat-Timeout: Key released: do not inc the counter
@@ -642,10 +641,19 @@ TranslateToBufMakeAndBreak:
 TranslateToBufGo:
 	; send shift make code
 	jnb	KC85ShiftF,TranslateToBufMakeNoShift
+	jb	ATShiftF,TranslateToBufShiftDone
 	mov	r2,#012h
 	call	RingBufCheckInsert
 
 TranslateToBufMakeNoShift:
+	; send shift break code
+	jnb	ATShiftF,TranslateToBufShiftDone
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+
+TranslateToBufShiftDone:
 	; keyboard disabled?
 	jb	ATKbdDisableF,TranslateToBufEnd
 
@@ -667,15 +675,12 @@ TranslateToBufNoRelease:
 	mov	r2, OutputBuf
 	call	RingBufCheckInsert
 
-	; send shift break code
-	jnb	KC85ShiftF,TranslateToBufBreakNoShift
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#012h
-	call	RingBufCheckInsert
 TranslateToBufBreakNoShift:
 TranslateToBufIgnoreZero:
 TranslateToBufEnd:
+	; save shift state
+	mov	c,KC85ShiftF
+	mov	ATShiftF,c
 	ret
 
 ;----------------------------------------------------------
@@ -969,7 +974,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_kc85_ps2_8051.asm,v 1.3 2007/07/31 23:52:10 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_kc85_ps2_8051.asm,v 1.4 2007/08/01 20:38:49 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
