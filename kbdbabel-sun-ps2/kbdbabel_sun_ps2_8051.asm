@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Sun to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.7 2007/06/27 22:41:52 akurz Exp $
+; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.9 2007/07/09 09:40:35 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ; alternatively 18.432MHz and 14.7456 may be used.
@@ -33,16 +33,17 @@
 ; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_sun_ps2_8051
 ; write kbdbabel_sun_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
-; Copyright 2006 by Alexander Kurz
+; Copyright 2006, 2007 by Alexander Kurz
 ;
 ; This is free software.
 ; You may copy and redistibute this software according to the
-; GNU general public license version 2 or any later verson.
+; GNU general public license version 3 or any later verson.
 ;
 ; ---------------------------------------------------------------------
 
 	cpu 8052
 	include	stddef51.inc
+	include kbdbabel_intervals.inc
 
 ;----------------------------------------------------------
 ; Variables / Memory layout
@@ -92,107 +93,6 @@ RingBufSizeMask	equ	0fh	; 16 byte ring-buffer size
 
 ;------------------ stack
 StackBottom	equ	50h	; the stack
-
-;----------------------------------------------------------
-; misc constants
-;----------------------------------------------------------
-;------------------ bitrates generated with timer 1 in 8 bit mode
-; 1200BPS @3.6864MHz -> tl1 and th1 = #240 with SMOD=1	; (256-2*3686.4/384/1.2)
-uart_t1_1200_3686_4k		equ	240
-
-; 1200BPS @7.3728MHz -> tl1 and th1 = #224 with SMOD=1	; (256-2*7372.8/384/1.2)
-uart_t1_1200_7372_8k		equ	224
-
-; 1200BPS @11.0592MHz -> tl1 and th1 = #208 with SMOD=1 ; (256-2*11059.2/384/1.2)
-uart_t1_1200_11059_2k		equ	208
-
-; 1200BPS @14.7456MHz -> tl1 and th1 = #192 with SMOD=1	; (256-2*14745.6/384/1.2)
-uart_t1_1200_14745_6k		equ	192
-
-; 1200BPS @18.432MHz -> tl1 and th1 = #176 with SMOD=1	; (256-2*18432/384/1.2)
-uart_t1_1200_18432k		equ	176
-
-; 4800BPS @18.432MHz -> tl1 and th1 = #236 with SMOD=1	; (256-2*18432/384/4.8)
-uart_t1_4800_18432k		equ	236
-
-; 9600BPS @18.432MHz -> tl1 and th1 = #246 with SMOD=1	; (256-2*18432/384/9.6)
-uart_t1_9600_18432k		equ	246
-
-;------------------ bitrates generated with timer 2
-; 9600 BPS at 18.432MHz -> RCAP2H,RCAP2L=#0FFh,#0c4h	; (256-18432/32/9.6)
-uart_t2h_9600_18432k		equ	255
-uart_t2l_9600_18432k		equ	196
-
-;------------------ AT scancode timing intervals generated with timer 0 in 8 bit mode
-; 85mus@11.0592MHz -> th0 and tl0=178 or 78 processor cycles	; (256-11059.2*0.085/12)
-interval_t0_85u_11059_2k	equ	178
-
-; 80mus@11.0592MHz -> th0 and tl0=183 or 73 processor cycles	; (256-11059.2*0.08/12)
-interval_t0_80u_11059_2k	equ	183
-
-; 75mus@11.0592MHz -> th0 and tl0=187 or 69 processor cycles	; (256-11059.2*0.075/12)
-interval_t0_75u_11059_2k	equ	187
-
-; 80mus@12.000MHz -> th0 and tl0=176 or 80 processor cycles	; (256-12000*0.08/12)
-interval_t0_45u_12M		equ	176
-
-; 80mus@18.432MHz -> th0 and tl0=134 or 122 processor cycles	; (256-18432*0.08/12)
-interval_t0_40u_18432k		equ	134
-
-; 80mus@24.000MHz -> th0 and tl0=96 or 160 processor cycles	; (256-24000*0.08/12)
-interval_t0_40u_24M		equ	96
-
-;------------------ AT RX timeout values using timer 0 in 16 bit mode
-; --- 18.432MHz
-; 20ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*20/12)
-interval_th_20m_18432k		equ	136
-interval_tl_20m_18432k		equ	0
-
-; 10ms@18.432MHz -> th0,tl0=0c4h,00h	; (65536-18432*10/12)
-interval_th_10m_18432k		equ	196
-interval_tl_10m_18432k		equ	0
-
-; 1ms@18.432MHz -> th0,tl0=0fah,00h	; (65536-18432*1/12)
-interval_th_1m_18432k		equ	250
-interval_tl_1m_18432k		equ	0
-
-; 0.13ms@18.432MHz -> th0,tl0=0ffh,38h	; (65536-18432*0.13/12)
-interval_th_130u_18432k		equ	255
-interval_tl_130u_18432k		equ	56
-
-; --- 11.0592MHz
-; 20ms@11.0592MHz -> th0,tl0=0b8h,00h	; (65536-11059.2*20/12)
-interval_th_20m_11059_2k	equ	184
-interval_tl_20m_11059_2k	equ	0
-
-; 10ms@11.0592MHz -> th0,tl0=0dch,00h	; (65536-11059.2*10/12)
-interval_th_10m_11059_2k	equ	220
-interval_tl_10m_11059_2k	equ	0
-
-; 1ms@11.0592MHz -> th0,tl0=0fch,66h	; (65536-11059.2*1/12)
-interval_th_1m_11059_2k		equ	252
-interval_tl_1m_11059_2k		equ	42
-
-; 0.13ms@11.0592MHz -> th0,tl0=0ffh,88h	; (65536-11059.2*0.13/12)
-interval_th_130u_11059_2k	equ	255
-interval_tl_130u_11059_2k	equ	136
-
-; --- 24.000MHz
-; 20ms@24.000MHz -> th0,tl0=63h,0c0h	; (65536-24000*20/12)
-interval_th_20m_24M		equ	99
-interval_tl_20m_24M		equ	192
-
-; 10ms@24.000MHz -> th0,tl0=0B1h,E0h	; (65536-24000*10/12)
-interval_th_10m_24M		equ	177
-interval_tl_10m_24M		equ	224
-
-; 1ms@24.000MHz -> th0,tl0=0f8h,30h	; (65536-24000*1/12)
-interval_th_1m_24M		equ	248
-interval_tl_1m_24M		equ	48
-
-; 0.128ms@24.000MHz -> th0,tl0=0ffh,00h	; (65536-24000*.128/12)
-interval_th_128u_24M		equ	255
-interval_tl_128u_24M		equ	0
 
 ;----------------------------------------------------------
 ; start
@@ -933,7 +833,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.5 2007/06/28 10:28:53 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.6 2007/09/27 20:51:00 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1094,11 +994,11 @@ LoopSunLEDEnd:
 ;----------------------------------------------------------
 ; Still space on the ROM left for the license?
 ;----------------------------------------------------------
-LIC01	DB	"   Copyright 2006 by Alexander Kurz"
+LIC01	DB	"   Copyright 2006, 2007 by Alexander Kurz"
 LIC02	DB	"   "
 GPL01	DB	"   This program is free software; you can redistribute it and/or modify"
 GPL02	DB	"   it under the terms of the GNU General Public License as published by"
-GPL03	DB	"   the Free Software Foundation; either version 2, or (at your option)"
+GPL03	DB	"   the Free Software Foundation; either version 3, or (at your option)"
 GPL04	DB	"   any later version."
 GPL05	DB	"   "
 GPL06	DB	"   This program is distributed in the hope that it will be useful,"
