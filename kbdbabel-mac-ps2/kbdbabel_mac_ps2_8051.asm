@@ -2,7 +2,7 @@
 ; Macintosh 128k/512k/Plus to AT/PS2 keyboard transcoder
 ; for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_mac_ps2_8051.asm,v 1.10 2007/07/09 09:38:02 akurz Exp $
+; $KbdBabel: kbdbabel_mac_ps2_8051.asm,v 1.12 2007/10/24 22:46:09 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ;
@@ -494,7 +494,7 @@ timerRXEnd:				; total 7
 ; special handling for 9e and 8e 9e
 ;----------------------------------------------------------
 Mac2ATxlt0	DB	 1ch,  3ch,  35h,  0dh,  21h,  42h,  55h,  00h
-Mac2ATxlt1	DB	 33h,  5ah,  26h,   0h,  15h,  4ah,  3eh,   0h
+Mac2ATxlt1	DB	 33h,  5ah,  26h,  11h,  15h,  4ah,  3eh,   0h
 Mac2ATxlt2	DB	 23h,  43h,  16h,  0eh,   0h,  61h,  3dh,  14h
 Mac2ATxlt3	DB	 1ah,  3bh,  36h,  00h,  24h,  3ah,  5bh,  00h
 Mac2ATxlt4	DB	 1bh,  54h,  2ch,  29h,  2ah,  4ch,  46h,  58h
@@ -511,7 +511,7 @@ Mac2ATxlt7	DB	 22h,  52h,  2eh,  11h,  2dh,  49h,  44h,  00h
 ; bit 2: send Make E1,14,77,E1,F0,14,F0,77 (Pause)
 ;----------------------------------------------------------
 Mac2ATxlte0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-Mac2ATxlte1	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
+Mac2ATxlte1	DB	 00h,  00h,  00h,  01h,  00h,  00h,  00h,  00h
 Mac2ATxlte2	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 Mac2ATxlte3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
 Mac2ATxlte4	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -1069,7 +1069,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_mac_ps2_8051.asm,v 1.5 2007/07/10 07:20:35 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_mac_ps2_8051.asm,v 1.6 2007/10/24 22:47:48 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
