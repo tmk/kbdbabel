@@ -2,7 +2,7 @@
 ; KbdBabel Common constants and definitions
 ; for various keyboard interval und timing issues.
 ;
-; $KbdBabel: kbdbabel_intervals.inc,v 1.3 2007/07/25 09:51:05 akurz Exp $
+; $KbdBabel: kbdbabel_intervals.inc,v 1.4 2007/11/08 23:18:44 akurz Exp $
 ;
 ; Copyright 2007 by Alexander Kurz
 ;
@@ -298,6 +298,14 @@ uart_t1_7k8125_12M		equ	248
 ; 7812.5BPS @24MHz -> tl1 and th1 = #240 with SMOD=1	; (256-2*24000/384/7.8125)
 uart_t1_7k8125_24M		equ	240
 
+; --- 31.25kBPS: Acorn A5000
+; 31250BPS @12MHz -> tl1 and th1 = #254 with SMOD=1	; (256-2*12000/384/31.25)
+uart_t1_31k25_12M		equ	254
+
+; 31250BPS @24MHz -> tl1 and th1 = #252 with SMOD=1	; (256-2*24000/384/31.25)
+uart_t1_31k25_24M		equ	252
+
+; --- 9k6 with 18.432
 ; 9600BPS @18.432MHz -> tl1 and th1 = #246 with SMOD=1	; (256-2*18432/384/9.6)
 uart_t1_9600_18432k		equ	246
 
