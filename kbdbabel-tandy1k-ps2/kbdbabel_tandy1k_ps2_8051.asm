@@ -2,7 +2,7 @@
 ; Tandy 1000 Personal Computer to AT/PS2 keyboard transcoder
 ; for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_tandy1k_ps2_8051.asm,v 1.1 2007/11/05 09:37:44 akurz Exp $
+; $KbdBabel: kbdbabel_tandy1k_ps2_8051.asm,v 1.2 2007/11/16 14:54:27 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz or alternative 22.1184MHz or 18.432MHz.
 ; Note: Tandy 1000 Keyboard data bits are sampled on negative
@@ -619,50 +619,17 @@ TranslateToBufNotDisabled:
 	; check for PrtScr Argh!
 	jnb	ATTXMasqPrtScrF,TranslateToBufNoPrtScr
 	jnb	ATTXBreakF,TranslateToBufPrtScrMake
-	mov	r2,#0E0h
-	call	RingBufCheckInsert
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#07Ch
-	call	RingBufCheckInsert
-	mov	r2,#0E0h
-	call	RingBufCheckInsert
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#012h
-	call	RingBufCheckInsert
+	call	ATPrtScrBrk
 	sjmp	TranslateToBufEnd
 TranslateToBufPrtScrMake:
-	mov	r2,#0E0h
-	call	RingBufCheckInsert
-	mov	r2,#012h
-	call	RingBufCheckInsert
-	mov	r2,#0E0h
-	call	RingBufCheckInsert
-	mov	r2,#07ch
-	call	RingBufCheckInsert
+	call	ATPrtScrMake
 	sjmp	TranslateToBufEnd
 TranslateToBufNoPrtScr:
 
 	; check for Pause, only Make-Code *AAAARRRGH*
 	jnb	ATTXMasqPauseF,TranslateToBufNoPause
 	jb	ATTXBreakF,TranslateToBufNoPause
-	mov	r2,#0E1h
-	call	RingBufCheckInsert
-	mov	r2,#014h
-	call	RingBufCheckInsert
-	mov	r2,#077h
-	call	RingBufCheckInsert
-	mov	r2,#0E1h
-	call	RingBufCheckInsert
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#014h
-	call	RingBufCheckInsert
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#077h
-	call	RingBufCheckInsert
+	call	ATPause
 	sjmp	TranslateToBufEnd
 TranslateToBufNoPause:
 
@@ -893,6 +860,63 @@ ATCPDone:
 	ret
 
 ;----------------------------------------------------------
+; helper, send AT/PS2 PrtScr Break
+;----------------------------------------------------------
+ATPrtScrBrk:
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#07Ch
+	call	RingBufCheckInsert
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
+; helper, send AT/PS2 PrtScr Break
+;----------------------------------------------------------
+ATPrtScrMake:
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#07ch
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
+; helper, send AT/PS2 Pause
+;----------------------------------------------------------
+ATPause:
+	mov	r2,#0E1h
+	call	RingBufCheckInsert
+	mov	r2,#014h
+	call	RingBufCheckInsert
+	mov	r2,#077h
+	call	RingBufCheckInsert
+	mov	r2,#0E1h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#014h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#077h
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
 ; helper, waste 20 cpu cycles
 ; note: call and return takes 4 cycles
 ;----------------------------------------------------------
@@ -994,7 +1018,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_tandy1k_ps2_8051.asm,v 1.1 2007/11/05 09:42:10 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_tandy1k_ps2_8051.asm,v 1.2 2007/11/16 20:19:07 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
