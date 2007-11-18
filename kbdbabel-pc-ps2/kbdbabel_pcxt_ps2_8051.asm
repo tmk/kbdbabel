@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; PC/XT to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.41 2007/07/09 09:35:58 akurz Exp $
+; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.43 2007/11/18 12:12:50 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz or alternative 22.1184MHz or 18.432MHz.
 ; Note: PC/XT data bits are sampled on negative clock slope.
@@ -86,8 +86,6 @@ ATCmdResetF	bit	B21.5	; reset
 ATCmdLedF	bit	B21.6	; AT command processing: set LED
 ATCmdScancodeF	bit	B21.7	; AT command processing: set scancode
 ATKbdDisableF	bit	B22.0	; Keyboard disable
-ATTXMasqPrtScrF	bit	B22.1	; TX-AT-Masq-Char-Bit (for PrtScr-Key)
-ATTXMasqPauseF	bit	B22.2	; TX-AT-Masq-Char-Bit (for Pause-Key, not implemented here)
 
 ;------------------ arrays
 RingBuf		equ	40h
@@ -586,7 +584,7 @@ timerRXEnd:				; total 7
 ;----------------------------------------------------------
 PCXT2ATxlt0	DB	 00h, 076h, 016h, 01eh, 026h, 025h, 02eh, 036h,  03dh, 03eh, 046h, 045h, 04eh, 055h, 066h,  0dh
 PCXT2ATxlt1	DB	015h, 01dh, 024h, 02dh, 02ch, 035h, 03ch, 043h,  044h, 04dh, 054h, 05bh, 05ah, 014h, 01ch, 01bh
-PCXT2ATxlt2	DB	023h, 02bh, 034h, 033h, 03bh, 042h, 04bh, 04ch,  052h,  0eh, 012h, 05dh, 01ah, 022h, 021h, 02ah
+PCXT2ATxlt2	DB	023h, 02bh, 034h, 033h, 03bh, 042h, 04bh, 04ch,  052h, 05dh, 012h, 061h, 01ah, 022h, 021h, 02ah
 PCXT2ATxlt3	DB	032h, 031h, 03ah, 041h, 049h, 04ah, 059h,  00h,  011h, 029h, 011h,  05h,  06h,  04h,  0ch,  03h
 PCXT2ATxlt4	DB	00bh, 083h,  0ah,  01h,  09h, 077h, 07eh, 06ch,  075h, 07dh, 07bh, 06bh, 073h, 074h, 079h, 069h
 PCXT2ATxlt5	DB	072h, 07ah, 070h, 071h,  00h,  00h,  00h, 078h,   07h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -599,9 +597,6 @@ PCXT2ATxlt7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h
 ; eg: CapsLock (PC/XT 03ah, AT 058h) is considered completely useless and is
 ;     translated to R-ALT (AT 0E0h, 011h) which is a two-byte-scancode
 ;     Hence bit 3a is set to one.
-; Note: even in the small 89c2051 there is enough program memory space for
-;	this space-consuming lookup table. Does not look nice,
-;	but it is easy to read and will execute fast.
 ;
 ; bit 0: E0-Escape
 ; bit 1: send Make E0,12,E0,7C / BreakE0,F0,7C,E0,F0,12 (PrtScr)
@@ -658,78 +653,43 @@ TranslateToBufPCXT:
 	; ignore make/break bit 7
 	anl	a,#7fh
 
-	; check for 2-byte scancodes
-	mov	r4,a
-	mov	dptr,#PCXT2ATxlte0
-	movc	a,@a+dptr
-	mov	c,acc.0
-	mov	ATTXMasqF,c
-	mov	c,acc.1
-	mov	ATTXMasqPrtScrF,c
-	mov	c,acc.2
-	mov	ATTXMasqPauseF,c
-	mov	a,r4
-
-	; get AT scancode
-	mov	dptr,#PCXT2ATxlt0
-	movc	a,@a+dptr
-	mov	OutputBuf,a
-
-	; clear received data flag
+	; save raw scancode and clear received data flag
+	mov	r3,a
 	clr	PCRXCompleteF
 
 	; keyboard disabled?
 	jb	ATKbdDisableF,TranslateToBufEnd
 
-	; check for PrtScr Argh!
-	jnb	ATTXMasqPrtScrF,TranslateToBufNoPrtScr
+	; check for 2-byte scancodes
+	mov	dptr,#PCXT2ATxlte0
+	movc	a,@a+dptr
+	jb	acc.1,TranslateToBufPrtScr
+	jb	acc.2,TranslateToBufPause
+	mov	c,acc.0
+	mov	ATTXMasqF,c
+	sjmp	TranslateToBufNormal
+
+TranslateToBufPrtScr:
+	; AT-Scancode for Print Screen
 	jnb	ATTXBreakF,TranslateToBufPrtScrMake
-	mov	r2,#0E0h
-	call	RingBufCheckInsert
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#07Ch
-	call	RingBufCheckInsert
-	mov	r2,#0E0h
-	call	RingBufCheckInsert
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#012h
-	call	RingBufCheckInsert
+	call	ATPrtScrBrk
 	sjmp	TranslateToBufEnd
 TranslateToBufPrtScrMake:
-	mov	r2,#0E0h
-	call	RingBufCheckInsert
-	mov	r2,#012h
-	call	RingBufCheckInsert
-	mov	r2,#0E0h
-	call	RingBufCheckInsert
-	mov	r2,#07ch
-	call	RingBufCheckInsert
+	call	ATPrtScrMake
 	sjmp	TranslateToBufEnd
-TranslateToBufNoPrtScr:
 
-	; check for Pause, only Make-Code *AAAARRRGH*
-	jnb	ATTXMasqPauseF,TranslateToBufNoPause
-	jb	ATTXBreakF,TranslateToBufNoPause
-	mov	r2,#0E1h
-	call	RingBufCheckInsert
-	mov	r2,#014h
-	call	RingBufCheckInsert
-	mov	r2,#077h
-	call	RingBufCheckInsert
-	mov	r2,#0E1h
-	call	RingBufCheckInsert
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#014h
-	call	RingBufCheckInsert
-	mov	r2,#0F0h
-	call	RingBufCheckInsert
-	mov	r2,#077h
-	call	RingBufCheckInsert
+TranslateToBufPause:
+	; AT-Scancode for Pause, only Make-Code is sent
+	jb	ATTXBreakF,TranslateToBufEnd
+	call	ATPause
 	sjmp	TranslateToBufEnd
-TranslateToBufNoPause:
+
+TranslateToBufNormal:
+	; get AT scancode
+	mov	a,r3
+	mov	dptr,#PCXT2ATxlt0
+	movc	a,@a+dptr
+	mov	OutputBuf,a
 
 	; dont send zero scancodes
 	mov	a, OutputBuf
@@ -766,6 +726,14 @@ BufTX:
 	anl	a,#RingBufSizeMask
 	jz	BufTXEnd
 
+	; inter-character delay 0.13ms
+	call	timer0_130u_init
+BufTXWaitDelay:
+	jb	MiscSleepT0F,BufTXWaitDelay
+
+	; abort if new PC receive is in progress
+	jb	PCRXActiveF,BufTXEnd	; new receive in progress
+
 	; -- get data from buffer
 	mov	a,RingBufPtrOut
 	add	a,#RingBuf
@@ -779,15 +747,11 @@ BufTX:
 	mov	ATTXParF,c	; odd parity bit
 	clr	ATHostToDevF	; timer in TX mode
 	setb	ATTXActiveF	; diag: TX is active
-;	clr	ex0		; may diable input interrupt here, better is, better dont.
-;	clr	ex1
 	call	timer0_init
 
 	; -- wait for completion
 BufTXWaitSent:
 	jb	TFModF,BufTXWaitSent
-;	setb	ex1		; enable external interupt 1
-;	setb	ex0		; enable external interupt 0
 	clr	ATTXActiveF		; diag
 	jb	ATCommAbort,BufTXEnd	; check on communication abort
 
@@ -936,6 +900,85 @@ ATCPDone:
 	ret
 
 ;----------------------------------------------------------
+; check if there is AT data to send
+;----------------------------------------------------------
+ATTX:
+; -- Device-to-Host communication
+	; -- check if there is data to send, send data
+	call	BufTX
+
+	; -- keyboard reset/cold start: send AAh after some delay
+	jnb	ATCmdResetF,ATTXWaitDelayEnd
+	clr	ATCmdResetF
+	; -- optional delay after faked cold start
+	; yes, some machines will not boot without this, e.g. IBM PS/ValuePoint 433DX/D
+	call	timer0_20ms_init
+ATTXResetDelay:
+	jb	MiscSleepT0F,ATTXResetDelay
+	; -- send "self test passed"
+	mov	r2,#0AAh
+	call	RingBufCheckInsert
+ATTXWaitDelayEnd:
+	ret
+
+;----------------------------------------------------------
+; helper, send AT/PS2 PrtScr Break
+;----------------------------------------------------------
+ATPrtScrBrk:
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#07Ch
+	call	RingBufCheckInsert
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
+; helper, send AT/PS2 PrtScr Make
+;----------------------------------------------------------
+ATPrtScrMake:
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#07ch
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
+; helper, send AT/PS2 Pause
+;----------------------------------------------------------
+ATPause:
+	mov	r2,#0E1h
+	call	RingBufCheckInsert
+	mov	r2,#014h
+	call	RingBufCheckInsert
+	mov	r2,#077h
+	call	RingBufCheckInsert
+	mov	r2,#0E1h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#014h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#077h
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
 ; helper, waste 20 cpu cycles
 ; note: call and return takes 4 cycles
 ;----------------------------------------------------------
@@ -1007,7 +1050,7 @@ timer0_init:
 ;----------------------------------------------------------
 ; init timer 0 in 16 bit mode for inter-char delay of 0.13ms
 ;----------------------------------------------------------
-timer0_diag_init:
+timer0_130u_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #01h;	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
@@ -1037,7 +1080,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.7 2007/07/09 10:03:28 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.8 2007/11/18 12:21:51 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1060,7 +1103,7 @@ InitResetDelay:
 	; -- init UART and timer0/1
 ;	acall	uart_timer2_init
 	acall	timer1_init
-	acall	timer0_diag_init
+	acall	timer0_130u_init
 
 	; -- enable interrupts int0
 	setb	ex0		; external interupt 0 enable
@@ -1093,9 +1136,21 @@ Loop:
 	; -- check AT line status, clock line must not be busy
 	jnb	p3.3,Loop
 
-	; -- check data line for RX or TX status
-	jb	p3.5,LoopATTX
-	sjmp	LoopATRX
+	; -- check for AT RX data
+	jnb	p3.5,LoopATRX
+
+	; -- stay in idle mode when PC RX is active
+	jb	PCRXActiveF,Loop
+
+	; -- send data, if data is present
+	call	ATTX
+
+;	; -- check if AT communication active.
+;	jb	TFModF,Loop
+
+;	; -- may do other things while idle here ...
+
+	sjmp	loop
 
 ;----------------------------------------------------------
 ; helpers for the main loop
@@ -1121,7 +1176,7 @@ LoopATRX:
 	; -- receive data on the AT line
 	mov	ATRXCount,#0
 	mov	ATRXBuf,#0
-;	clr     ATHostToDevIntF
+;	clr	ATHostToDevIntF
 	setb	ATHostToDevF
 	call	timer0_init
 
@@ -1129,34 +1184,6 @@ LoopATRX:
 LoopTXWaitSent:
 	jb	TFModF,LoopTXWaitSent
 LoopCheckATEnd:
-	ljmp	Loop
-
-; ----------------
-LoopATTX:
-; -- Device-to-Host communication
-	; -- send data on the AT line
-	; some delay 0.15ms
-	call	timer0_diag_init
-LoopTXWaitDelay:
-	jb	PCRXActiveF,LoopTXWaitDelayEnd	; new receive in progress
-	jb	MiscSleepT0F,LoopTXWaitDelay
-
-LoopSendData:
-	; send data
-	call	BufTX
-
-	; -- keyboard reset/cold start: send AAh after some delay
-	jnb	ATCmdResetF,LoopTXWaitDelayEnd
-	clr	ATCmdResetF
-	; -- optional delay after faked cold start
-	; yes, some machines will not boot without this, e.g. IBM PS/ValuePoint 433DX/D
-	call	timer0_20ms_init
-LoopTXResetDelay:
-	jb	MiscSleepT0F,LoopTXResetDelay
-	; -- send "self test passed"
-	mov	r2,#0AAh
-	call	RingBufCheckInsert
-LoopTXWaitDelayEnd:
 	ljmp	Loop
 
 ;----------------------------------------------------------
