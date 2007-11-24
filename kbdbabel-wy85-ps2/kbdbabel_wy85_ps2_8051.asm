@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Wyse WY-85 to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $KbdBabel: kbdbabel_wy85_ps2_8051.asm,v 1.5 2007/11/16 15:08:44 akurz Exp $
+; $Id: kbdbabel_wy85_ps2_8051.asm,v 1.5 2007/11/24 13:43:51 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz.
 ;
@@ -155,6 +155,7 @@ Int0Return:
 ; TF1ModF=1:
 ; timer is used in 8-bit-auto-reload-mode to generate
 ; 160 WY85 scancode clock cycles with 15-40 microseconds timings.
+; In worst case this routine takes 40 processor cycles.
 ;
 ; Registers used: r5,r6
 ;----------------------------------------------------------
@@ -171,14 +172,14 @@ HandleTF1:
 ; --------------------------- timer is used as 8-bit clock generator
 timer1AsClockTimer:
 	; --- sample one bit
-	mov	a,r5		; 1,11
+	mov	a,r5		; 1,9
 	rr	a		; 1
 	mov	c,p3.4		; 1
 	mov	acc.7,c		; 2
-	mov	r5,a		; 1,16
+	mov	r5,a		; 1,14
 
 	; --- 8 bits each byte
-	djnz	r6,timer1NotSaveWord	; 2,18
+	djnz	r6,timer1NotSaveWord	; 2,16
 	mov	r6,#8			; 1
 
 	; --- store 8 bit to the 20-byte-buffer
@@ -193,12 +194,12 @@ timer1AsClockTimer:
 ;	setb	p1.0
 
 timer1NotSaveWord:
-	clr	p3.2		; 1,19/29
+	clr	p3.2		; 1,18/28
 	nop			; 1
-	setb	p3.2		; 1,21/31
+	setb	p3.2		; 1,20/30
 
 	; --- 160-clocks
-	djnz	WY85TRBitCount,timer1Return	; 2,10
+	djnz	WY85TRBitCount,timer1Return	; 2,22/32
 
 	; --- 160 clocks finished
 	clr	WY85ClockF
@@ -499,12 +500,29 @@ timerRXEnd:				; total 7
 	reti				; 2
 
 ;----------------------------------------------------------
+; Notes on the keyboard-mapping
+;
+; Help/Hilfe -> AltGr/AltR
+; Ausführen/Do -> CtrlR
+; F17 -> Esc
+; F19 -> PrtScr
+; F19 -> ScrollLock
+; F20 -> Pause
+; Find/Suchen -> Home
+; Select/Selektieren -> End
+; PF1 -> NumLock
+; PF2 -> KP/
+; PF3 -> KP*
+; PF4 -> KP+
+;----------------------------------------------------------
+
+;----------------------------------------------------------
 ; WY85 to AT translaton table
 ;----------------------------------------------------------
 WY852ATxlt0	DB	 70h,  6bh,  77h,  61h,  3eh,  0dh,  5ah,  05h,   71h,  73h,  4ah,  1ah,  46h,  2dh,  52h,  06h
 WY852ATxlt1	DB	 75h,  74h,  7ch,  21h,  45h,  1dh,  5dh,  04h,   72h,  69h,  79h,  22h,  4eh,  24h,  4ch,  0ch
-WY852ATxlt2	DB	 6bh,  72h,  6ch,  2ah,  55h,  15h,  29h,  03h,    0h,   0h,  76h,  7eh,  00h,   0h,   0h,  11h
-WY852ATxlt3	DB	 4bh,  42h,  3bh,  12h,  33h,  34h,   0h,  0bh,   74h,  5bh,  54h,  66h,  4dh,  70h,  14h,  83h
+WY852ATxlt2	DB	 6bh,  72h,  6ch,  2ah,  55h,  15h,  29h,  03h,   7eh,  00h,  76h,  14h,  11h,   0h,   0h,  11h
+WY852ATxlt3	DB	 4bh,  42h,  3bh,  12h,  33h,  34h,  00h,  0bh,   74h,  5bh,  54h,  66h,  4dh,  70h,  14h,  83h
 WY852ATxlt4	DB	 3dh,  36h,  2eh,  25h,  71h,  2ch,  58h,  0ah,   4ah,  49h,  41h,  69h,  0eh,  35h,  1ch,  01h
 WY852ATxlt5	DB	 79h,  7bh,  7dh,  31h,  16h,  3ch,  1bh,  09h,   5ah,  7ah,  75h,  32h,  1eh,  43h,  2bh,  78h
 WY852ATxlt6	DB	 6ch,  7ah,  7dh,  3ah,  26h,  44h,  23h,  07h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -519,8 +537,8 @@ WY852ATxlt7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h
 ;----------------------------------------------------------
 WY852ATxlte0	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  01h,  00h,  00h,  00h,  00h,  00h
 WY852ATxlte1	DB	 01h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   01h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
-WY852ATxlte2	DB	 01h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  04h,  00h,  00h,  02h,  00h,  00h,  00h
-WY852ATxlte3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   01h,  00h,  00h,  00h,  00h,  01h,  00h,  00h
+WY852ATxlte2	DB	 01h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  02h,  00h,  01h,  01h,  00h,  00h,  00h
+WY852ATxlte3	DB	 00h,  00h,  00h,  00h,  00h,  00h,  04h,  00h,   01h,  00h,  00h,  00h,  00h,  01h,  00h,  00h
 WY852ATxlte4	DB	 00h,  00h,  00h,  00h,  01h,  00h,  00h,  00h,   00h,  00h,  00h,  01h,  00h,  00h,  00h,  00h
 WY852ATxlte5	DB	 00h,  00h,  01h,  00h,  00h,  00h,  00h,  00h,   01h,  01h,  00h,  00h,  00h,  00h,  00h,  00h
 WY852ATxlte6	DB	 01h,  00h,  00h,  00h,  00h,  00h,  00h,  00h,   00h,  00h,  00h,  00h,  00h,  00h,  00h,  00h
@@ -728,7 +746,6 @@ TranslateToBufNoRelease:
 TranslateToBufIgnoreZero:
 TranslateToBufEnd:
 	ret
-
 ;----------------------------------------------------------
 ; Send data from the ring buffer
 ;----------------------------------------------------------
@@ -740,6 +757,14 @@ BufTX:
 	subb	a,RingBufPtrOut
 	anl	a,#RingBufSizeMask
 	jz	BufTXEnd
+
+	; inter-character delay 0.13ms
+	call	timer0_130u_init
+BufTXWaitDelay:
+	jb	MiscSleepT0F,BufTXWaitDelay
+
+	; abort if new WY85 receive is in progress
+	jb	WY85ClockF,BufTXEnd
 
 	; -- get data from buffer
 	mov	a,RingBufPtrOut
@@ -754,7 +779,7 @@ BufTX:
 	mov	ATTXParF,c	; odd parity bit
 	clr	ATHostToDevF	; timer in TX mode
 	setb	ATTXActiveF	; diag: TX is active
-	call	timer0_init
+	call	timer0_45u_init
 
 	; -- wait for completion
 BufTXWaitSent:
@@ -907,6 +932,32 @@ ATCPDone:
 	ret
 
 ;----------------------------------------------------------
+; check if there is AT data to send
+;----------------------------------------------------------
+ATTX:
+; -- Device-to-Host communication
+	; -- check if there is data to send, send data
+	call	BufTX
+
+	; -- keyboard reset/cold start: send AAh after some delay
+	jnb	ATCmdResetF,ATTXWaitDelayEnd
+	clr	ATCmdResetF
+	; -- optional delay after faked cold start
+	; yes, some machines will not boot without this, e.g. IBM PS/ValuePoint 433DX/D
+	call	timer0_20ms_init
+ATTXResetDelay:
+	jb	MiscSleepT0F,ATTXResetDelay
+
+	; -- init the WY85-state buffer
+	call	DeltaKeyState
+
+	; -- send "self test passed"
+	mov	r2,#0AAh
+	call	RingBufCheckInsert
+ATTXWaitDelayEnd:
+	ret
+
+;----------------------------------------------------------
 ; helper, send AT/PS2 PrtScr Break
 ;----------------------------------------------------------
 ATPrtScrBrk:
@@ -1005,9 +1056,10 @@ uart_timer2_init:
 
 ;----------------------------------------------------------
 ; init timer 1 for interval timing (fast 8 bit reload)
-; interval is 17 microseconds
+; for WY-85 Clock generation.
+; interval is 25 microseconds
 ;----------------------------------------------------------
-timer1_init:
+timer1_wy85clk_init:
 	clr	tr1
 
 	; --- diag trigger
@@ -1022,8 +1074,8 @@ timer1_init:
 
 	anl	tmod, #0fh	; clear all lower bits
 	orl	tmod, #20h;	; 8-bit Auto-Reload Timer, mode 2
-	mov	th1, #interval_t1_30u_24M
-	mov	tl1, #interval_t1_30u_24M
+	mov	th1, #interval_t1_25u_24M
+	mov	tl1, #interval_t1_25u_24M
 	setb	et1		; (IE.3) enable timer 1 interrupt
 
 	setb	p3.2
@@ -1051,7 +1103,7 @@ timer1_20ms_init:
 ; init timer 0 for interval timing (fast 8 bit reload)
 ; need 40-50mus intervals
 ;----------------------------------------------------------
-timer0_init:
+timer0_45u_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #02h;	; 8-bit Auto-Reload Timer, mode 2
@@ -1067,7 +1119,7 @@ timer0_init:
 ;----------------------------------------------------------
 ; init timer 0 in 16 bit mode for inter-char delay of 0.13ms
 ;----------------------------------------------------------
-timer0_diag_init:
+timer0_130u_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #01h	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
@@ -1097,7 +1149,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_wy85_ps2_8051.asm,v 1.4 2007/11/16 20:15:09 akurz Exp $"
+RCSId	DB	"$KbdBabel: kbdbabel_wy85_ps2_8051.asm,v 1.6 2007/11/24 13:32:01 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1118,9 +1170,8 @@ InitResetDelay:
 	djnz	r0,InitResetDelayLoop
 
 	; -- init UART and timer0/1
-;	acall	uart_timer2_init
-	acall	timer1_init
-	acall	timer0_diag_init
+;	acall	timer1_wy85clk_init
+;	acall	timer0_130u_init
 
 	; -- enable interrupt int0
 	setb	ex0		; external interupt 0 enable
@@ -1148,7 +1199,7 @@ Loop:
 	; -- check WY85-Pause
 	jb	TF1ModF, LoopWY85Clock
 	jb	MiscSleepT1F,LoopWY85Done
-	acall	timer1_init
+	acall	timer1_wy85clk_init
 	sjmp	LoopWY85Done
 
 	; -- check if 160 WY85-Clocks are sent, start delay timer when finished
@@ -1169,9 +1220,21 @@ LoopWY85Done:
 	; -- check AT line status, clock line must not be busy
 	jnb	p3.3,Loop
 
-	; -- check data line for RX or TX status
-	jb	p3.5,LoopATTX
-	sjmp	LoopATRX
+	; -- check for AT RX data
+	jnb	p3.5,LoopATRX
+
+	; -- stay in idle mode when WY85 data transfer is active
+	jb	WY85ClockF,Loop
+
+	; -- send data, if data is present
+	call	ATTX
+
+;	; -- check if AT communication active.
+;	jb	TFModF,Loop
+;	
+;	; -- may do other things while idle here ...
+
+	sjmp loop
 
 ;----------------------------------------------------------
 ; helpers for the main loop
@@ -1198,44 +1261,12 @@ LoopATRX:
 	mov	ATRXBuf,#0
 ;	clr     ATHostToDevIntF
 	setb	ATHostToDevF
-	call	timer0_init
+	call	timer0_45u_init
 
 	; wait for completion
 LoopTXWaitSent:
 	jb	TFModF,LoopTXWaitSent
 LoopCheckATEnd:
-	ljmp	Loop
-
-; ----------------
-LoopATTX:
-; -- Device-to-Host communication
-	; -- send data on the AT line
-	; some delay 0.15ms
-	call	timer0_diag_init
-LoopTXWaitDelay:
-	jb	MiscSleepT0F,LoopTXWaitDelay
-
-LoopSendData:
-	; send data
-	call	BufTX
-
-	; -- keyboard reset/cold start: send AAh after some delay
-	jnb	ATCmdResetF,LoopTXWaitDelayEnd
-	clr	ATCmdResetF
-;	clr	ATKbdDisableF
-	; -- optional delay after faked cold start
-	; yes, some machines will not boot without this, e.g. IBM PS/ValuePoint 433DX/D
-	call	timer0_20ms_init
-LoopTXResetDelay:
-	jb	MiscSleepT0F,LoopTXResetDelay
-
-	; -- init the WY85-state buffer
-	call	DeltaKeyState
-	clr	ATKbdDisableF
-	; -- send "self test passed"
-	mov	r2,#0AAh
-	call	RingBufCheckInsert
-LoopTXWaitDelayEnd:
 	ljmp	Loop
 
 ;----------------------------------------------------------
