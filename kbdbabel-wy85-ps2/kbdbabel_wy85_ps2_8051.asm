@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Wyse WY-85 to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $Id: kbdbabel_wy85_ps2_8051.asm,v 1.5 2007/11/24 13:43:51 akurz Exp $
+; $Id: kbdbabel_wy85_ps2_8051.asm,v 1.6 2007/11/27 21:47:54 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz.
 ;
@@ -779,7 +779,7 @@ BufTXWaitDelay:
 	mov	ATTXParF,c	; odd parity bit
 	clr	ATHostToDevF	; timer in TX mode
 	setb	ATTXActiveF	; diag: TX is active
-	call	timer0_45u_init
+	call	timer0_40u_init
 
 	; -- wait for completion
 BufTXWaitSent:
@@ -1087,12 +1087,12 @@ timer1_wy85clk_init:
 ;----------------------------------------------------------
 ; init timer 1 in 16 bit mode
 ;----------------------------------------------------------
-timer1_20ms_init:
+timer1_10ms_init:
 	clr	tr1
 	anl	tmod, #0fh	; clear all upper bits
 	orl	tmod, #10h	; M0,M1, bit4,5 in TMOD, timer 1 in mode 1, 16bit
-	mov	th1, #interval_th_20m_11059_2k
-	mov	tl1, #interval_tl_20m_11059_2k
+	mov	th1, #interval_th_10m_24M
+	mov	tl1, #interval_tl_10m_24M
 	setb	et1		; (IE.3) enable timer 1 interrupt
 	setb	MiscSleepT1F
 	clr	TF1ModF		; see timer 1 interrupt code
@@ -1101,14 +1101,14 @@ timer1_20ms_init:
 
 ;----------------------------------------------------------
 ; init timer 0 for interval timing (fast 8 bit reload)
-; need 40-50mus intervals
+; need 40mus intervals
 ;----------------------------------------------------------
-timer0_45u_init:
+timer0_40u_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #02h;	; 8-bit Auto-Reload Timer, mode 2
-	mov	th0, #interval_t0_45u_11059_2k
-	mov	tl0, #interval_t0_45u_11059_2k
+	mov	th0, #interval_t0_40u_24M
+	mov	tl0, #interval_t0_40u_24M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	setb	TFModF		; see timer 0 interrupt code
 	clr	ATCommAbort	; communication abort flag
@@ -1123,8 +1123,8 @@ timer0_130u_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #01h	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
-	mov	th0, #interval_th_130u_11059_2k
-	mov	tl0, #interval_tl_130u_11059_2k
+	mov	th0, #interval_th_128u_24M
+	mov	tl0, #interval_tl_128u_24M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	clr	TFModF		; see timer 0 interrupt code
 	setb	MiscSleepT0F
@@ -1138,8 +1138,8 @@ timer0_20ms_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all upper bits
 	orl	tmod, #01h	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
-	mov	th0, #interval_th_20m_11059_2k
-	mov	tl0, #interval_tl_20m_11059_2k
+	mov	th0, #interval_th_20m_24M
+	mov	tl0, #interval_tl_20m_24M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	clr	TFModF		; see timer 0 interrupt code
 	setb	MiscSleepT0F
@@ -1149,7 +1149,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$KbdBabel: kbdbabel_wy85_ps2_8051.asm,v 1.6 2007/11/24 13:32:01 akurz Exp $"
+RCSId	DB	"$KbdBabel: kbdbabel_wy85_ps2_8051.asm,v 1.7 2007/11/27 21:42:13 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1185,7 +1185,6 @@ InitResetDelay:
 	mov	B21,#0
 	mov	B22,#0
 	mov	B23,#0
-	setb	ATKbdDisableF
 
 	; -- init the ring buffer
 	mov	RingBufPtrIn,#0
@@ -1205,7 +1204,7 @@ Loop:
 	; -- check if 160 WY85-Clocks are sent, start delay timer when finished
 LoopWY85Clock:
 	jb	WY85ClockF,LoopWY85Done
-	call	timer1_20ms_init
+	call	timer1_10ms_init
 
 LoopWY85Done:
 	; -- check Keyboard receive status
@@ -1261,7 +1260,7 @@ LoopATRX:
 	mov	ATRXBuf,#0
 ;	clr     ATHostToDevIntF
 	setb	ATHostToDevF
-	call	timer0_45u_init
+	call	timer0_40u_init
 
 	; wait for completion
 LoopTXWaitSent:
