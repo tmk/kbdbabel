@@ -1,9 +1,9 @@
 ; ---------------------------------------------------------------------
 ; Acorn A5000 to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_a5000_ps2_8051.asm,v 1.1 2007/11/10 23:49:32 akurz Exp $
+; $Id: kbdbabel_a5000_ps2_8051.asm,v 1.2 2008/01/04 09:07:33 akurz Exp $
 ;
-; Clock/Crystal: 24MHz (test) 12MHz (planned later).
+; Clock/Crystal: 12MHz.
 ;
 ; A5000 Keyboard connect:
 ; The reset-line is pulled up with 4k7
@@ -33,7 +33,7 @@
 ; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_a5000_ps2_8051
 ; write kbdbabel_a5000_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
-; Copyright 2007 by Alexander Kurz
+; Copyright 2007, 2008 by Alexander Kurz
 ;
 ; This is free software.
 ; You may copy and redistibute this software according to the
@@ -160,14 +160,10 @@ HandleInt0:
 ; timer is used as 16-bit alarm clock.
 ; Stop the timer after overflow, cleanup RX buffers
 ; and clear MiscSleepT0F
-; RX timeout at 18.432MHz, set th0,tl0 to
-;   0c0h,00h -> 10ms, 0e0h,00h -> 5ms, 0fah,00h -> 1ms
-;   0fbh,0cdh -> 0.7ms, 0ffh,039h -> 0.12ms
 ;
 ; TFModF=1:
 ; timer is used in 8-bit-auto-reload-mode to generate
-; the AT scancode clock with 2x40 microseconds timings.
-; 40mus@18.432MHz -> th0 and tl0=0c3h or 61 processor cycles.
+; the AT scancode clock timings.
 ;
 ; TFModF=1, ATHostToDevF=0:
 ; device-to-host communication: send datagrams on the AT line.
@@ -197,13 +193,13 @@ timerAsClockTimer:
 timerDevToHost:
 ; -- switch on bit-number
 ; -----------------
-	jb	ATBitCount.0,timerTXClockRelease	; 2,10
-	mov	dptr,#timerDevToHostJT		; 2,12
-	mov	a,ATBitCount			; 1,13
-	jmp	@a+dptr				; 2,15
+	mov	dptr,#timerDevToHostJT		; 2,10
+	mov	a,ATBitCount			; 1,11
+	rl	a				; 1,12
+	jmp	@a+dptr				; 2,14
 
 timerDevToHostJT:
-	sjmp	timerTXStartBit		; 2,17
+	sjmp	timerTXStartBit		; 2,16
 	sjmp	timerTXDataBit
 	sjmp	timerTXDataBit
 	sjmp	timerTXDataBit
@@ -222,11 +218,9 @@ timerTXStartBit:
 	jnb	p3.3,timerTXClockBusy	; 2
 	nop
 	clr	p3.5			; 1	; Data Startbit
-
-	call	nop20
-
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerTXEnd		; 2
+	sjmp	timerTXClockRelease	; 2
 
 ; -----------------
 timerTXDataBit:
@@ -235,11 +229,9 @@ timerTXDataBit:
 	rrc	a			; 1	; next data bit to c
 	mov	p3.5,c			; 2
 	mov	TXBuf,a			; 1
-
-	call	nop20
-
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerTXEnd
+	sjmp	timerTXClockRelease	; 2
 
 ; -----------------
 timerTXParityBit:
@@ -247,11 +239,9 @@ timerTXParityBit:
 	nop
 	mov	c,ATTXParF		; 1	; parity bit
 	mov	p3.5,c			; 2
-
-	call	nop20
-
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerTXEnd		; 2
+	sjmp	timerTXClockRelease	; 2
 
 ; -----------------
 timerTXStopBit:
@@ -260,21 +250,17 @@ timerTXStopBit:
 	nop
 	nop
 	setb	p3.5			; 1	; Data Stopbit
-
-	call	nop20
-
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerTXEnd		; 2
+	sjmp	timerTXClockRelease	; 2
 
 ; -----------------
 timerTXClockRelease:
 ; -- release clock line
-
-	call	nop20
-
+	call	ATTX_delay_release
 	mov	a,ATBitCount		; 1
+	cjne	a,#10,timerTXCheckBusy	; 2
 	setb	p3.3			; 1
-	cjne	a,#21,timerTXCheckBusy	; 2
 	setb	p1.2			; diag: data send
 	; end of TX sequence, not time critical
 	sjmp	timerTXStop
@@ -282,6 +268,7 @@ timerTXClockRelease:
 timerTXCheckBusy:
 ; -- check if clock is released, but not after the stop bit.
 ; -- Host may pull down clock to abort communication at any time.
+	setb	p3.3			; 1
 	jb	p3.3,timerTXEnd
 
 timerTXClockBusy:
@@ -310,12 +297,12 @@ timerTXEnd:				; total 7
 timerHostToDev:
 ; -- switch on bit-number
 ; -----------------
-	jb	ATBitCount.0,timerRXClockRelease	; 2,10
-	mov	dptr,#timerHostToDevJT		; 2,12
-	mov	a,ATBitCount			; 1,13
-	jmp	@a+dptr				; 2,15
+	mov	dptr,#timerHostToDevJT		; 2,10
+	mov	a,ATBitCount			; 1,11
+	rl	a				; 1,12
+	jmp	@a+dptr				; 2,14
 timerHostToDevJT:
-	sjmp	timerRXStartBit		; 2,17
+	sjmp	timerRXStartBit		; 2,16
 	sjmp	timerRXDataBit
 	sjmp	timerRXDataBit
 	sjmp	timerRXDataBit
@@ -336,7 +323,7 @@ timerRXStartBit:
 
 	; pull down clock line
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd
+	sjmp	timerRXClockRelease
 
 ; -----------------
 timerRXDataBit:
@@ -349,7 +336,7 @@ timerRXDataBit:
 
 ; -- pull down clock line
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd
+	sjmp	timerRXClockRelease
 
 ; -----------------
 timerRXParityBit:
@@ -360,13 +347,13 @@ timerRXParityBit:
 	jnb	p3.5,timerRXClockBusy		; parity error
 ; -- pull down clock line
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd
+	sjmp	timerRXClockRelease
 
 timerRXParityBitPar:
 	jb	p3.5,timerRXClockBusy		; parity error
 ; -- pull down clock line
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd
+	sjmp	timerRXClockRelease
 
 ; -----------------
 timerRXAckBit:
@@ -376,11 +363,9 @@ timerRXAckBit:
 
 	; ACK-Bit
 	clr	p3.5			; 1
-	nop
-	nop
-	nop
+	call	ATTX_delay_clk
 	clr	p3.3			; 1	; Clock
-	sjmp	timerRXEnd		; 2
+	sjmp	timerRXClockRelease	; 2
 
 ; -----------------
 timerRXCleanup:
@@ -398,18 +383,17 @@ timerRXCleanup:
 ; -----------------
 timerRXClockRelease:
 ; -- release clock line
-	nop
-	nop
-	nop
+	call	ATTX_delay_release
 	mov	a,ATBitCount		; 1
+	cjne	a,#10,timerRXCheckBusy
 	setb	p3.3			; 1
-	cjne	a,#21,timerRXCheckBusy
 	setb	p1.1			; diag: host-do-dev ok
 	sjmp	timerRXEnd
 
 timerRXCheckBusy:
 ; -- check if clock is released, but not after the last bit.
 ; -- Host may pull down clock to abort communication at any time.
+	setb	p3.3			; 1
 	jb	p3.3,timerRXEnd
 
 timerRXClockBusy:
@@ -429,7 +413,6 @@ timerRXEnd:				; total 7
 	pop	psw			; 2
 	pop	acc			; 2
 	reti				; 2
-
 
 ;----------------------------------------------------------
 ; serial interrupt handler:
@@ -504,29 +487,46 @@ TranslateToBufA5k:
 	mov	c,A5kRxBreakF
 	mov	ATTXBreakF,c
 
-	; translate from Atari ST to AT scancode
+	; get and save raw scancode and clear received data flag
 	mov	a,RawBuf
+	mov	r4,a
+	clr	MiscRXCompleteF
+
+	; keyboard disabled?
+	jb	ATKbdDisableF,TranslateToBufA5kEnd
 
 	; check 2-byte scancodes
-	mov	r4,a
 	mov	dptr,#A5k2ATxlte0
 	movc	a,@a+dptr
+	jb	acc.1,TranslateToBufA5kPrtScr
+	jb	acc.2,TranslateToBufA5kPause
 	mov	c,acc.0
 	mov	ATTXMasqF,c
 	mov	a,r4
+	sjmp	TranslateToBufA5kNormal
 
+TranslateToBufA5kPrtScr:
+	; AT-Scancode for Print Screen
+	jnb	ATTXBreakF,TranslateToBufA5kPrtScrMake
+	call	ATPrtScrBrk
+	sjmp	TranslateToBufA5kEnd
+TranslateToBufA5kPrtScrMake:
+	call	ATPrtScrMake
+	sjmp	TranslateToBufA5kEnd
+
+TranslateToBufA5kPause:
+	; AT-Scancode for Pause, only Make-Code is sent
+	jb	ATTXBreakF,TranslateToBufA5kEnd
+	call	ATPause
+	sjmp	TranslateToBufA5kEnd
+
+TranslateToBufA5kNormal:
 	; get AT scancode
 	mov	dptr,#A5k2ATxlt0
 	movc	a,@a+dptr
 
 	; save AT scancode
 	mov	OutputBuf,a
-
-	; clear received data flag
-	clr	MiscRXCompleteF
-
-	; keyboard disabled?
-	jb	ATKbdDisableF,TranslateToBufA5kEnd
 
 	; check for 0xE0 escape code
 	jnb	ATTXMasqF,TranslateToBufA5kNoEsc
@@ -846,6 +846,63 @@ a5000_initWaitTISMAK:
 	ret
 
 ;----------------------------------------------------------
+; helper, send AT/PS2 PrtScr Break
+;----------------------------------------------------------
+ATPrtScrBrk:
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#07Ch
+	call	RingBufCheckInsert
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
+; helper, send AT/PS2 PrtScr Break
+;----------------------------------------------------------
+ATPrtScrMake:
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#012h
+	call	RingBufCheckInsert
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+	mov	r2,#07ch
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
+; helper, send AT/PS2 Pause
+;----------------------------------------------------------
+ATPause:
+	mov	r2,#0E1h
+	call	RingBufCheckInsert
+	mov	r2,#014h
+	call	RingBufCheckInsert
+	mov	r2,#077h
+	call	RingBufCheckInsert
+	mov	r2,#0E1h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#014h
+	call	RingBufCheckInsert
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2,#077h
+	call	RingBufCheckInsert
+
+	ret
+
+;----------------------------------------------------------
 ; helper, waste 20 cpu cycles
 ; note: call and return takes 4 cycles
 ;----------------------------------------------------------
@@ -871,6 +928,54 @@ nop20:
 	ret
 
 ;----------------------------------------------------------
+; helper: delay clock line status change for 10 microseconds
+; FIXME: this is X-tal frequency dependant
+;----------------------------------------------------------
+ATTX_delay_clk:
+	nop
+	nop
+	nop
+	nop
+
+	ret
+
+;----------------------------------------------------------
+; helper: delay clock release
+; FIXME: this is X-tal frequency dependant
+;----------------------------------------------------------
+ATTX_delay_release:
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	nop
+	nop
+	nop
+	nop
+	nop
+
+	ret
+
+;----------------------------------------------------------
 ; init uart with timer 1 as baudrate generator
 ; Acorn A5000 31.25 kbps
 ;----------------------------------------------------------
@@ -878,8 +983,8 @@ uart_timer1_init:
 	mov	scon, #050h	; uart mode 1 (8 bit), single processor
 	orl	tmod, #020h	; M0,M1, bit4,5 in TMOD, timer 1 in mode 2, 8bit-auto-reload
 	orl	pcon, #080h	; SMOD, bit 7 in PCON
-	mov	th1, #uart_t1_31k25_24M
-	mov	tl1, #uart_t1_31k25_24M
+	mov	th1, #uart_t1_31k25_12M
+	mov	tl1, #uart_t1_31k25_12M
 	clr	es		; disable serial interrupt
 	setb	tr1
 
@@ -890,14 +995,14 @@ uart_timer1_init:
 
 ;----------------------------------------------------------
 ; init timer 0 for interval timing (fast 8 bit reload)
-; need 40-50mus intervals
+; need 70-85mus intervals
 ;----------------------------------------------------------
 timer0_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #02h;	; 8-bit Auto-Reload Timer, mode 2
-	mov	th0, #interval_t0_40u_24M
-	mov	tl0, #interval_t0_40u_24M
+	mov	th0, #interval_t0_80u_12M
+	mov	tl0, #interval_t0_80u_12M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	setb	TFModF		; see timer 0 interrupt code
 	clr	ATCommAbort	; communication abort flag
@@ -912,8 +1017,8 @@ timer0_130u_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #01h	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
-	mov	th0, #interval_th_128u_24M
-	mov	tl0, #interval_tl_128u_24M
+	mov	th0, #interval_th_128u_12M
+	mov	tl0, #interval_tl_128u_12M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	clr	TFModF		; see timer 0 interrupt code
 	setb	MiscSleepT0F
@@ -927,8 +1032,8 @@ timer0_20ms_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all upper bits
 	orl	tmod, #01h	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
-	mov	th0, #interval_th_20m_24M
-	mov	tl0, #interval_tl_20m_24M
+	mov	th0, #interval_th_20m_12M
+	mov	tl0, #interval_tl_20m_12M
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	clr	TFModF		; see timer 0 interrupt code
 	setb	MiscSleepT0F
@@ -938,7 +1043,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_a5000_ps2_8051.asm,v 1.1 2007/11/11 00:01:45 akurz Exp $"
+RCSId	DB	"$KbdBabel: kbdbabel_a5000_ps2_8051.asm,v 1.2 2008/01/03 21:49:18 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1001,6 +1106,11 @@ Loop:
 
 	; -- check if commands may be sent to the Keyboard
 	jb	A5kKbdSetLedF,LoopSetA5kLED
+
+;	; -- check if AT communication active.
+;	jb	TFModF,Loop
+
+;	; -- may do other things while idle here ...
 
 	sjmp	Loop
 
@@ -1094,7 +1204,7 @@ a5000_initWaitTITestLoop2:
 ;----------------------------------------------------------
 ; Still space on the ROM left for the license?
 ;----------------------------------------------------------
-LIC01	DB	"   Copyright 2007 by Alexander Kurz"
+LIC01	DB	"   Copyright 2007,2008 by Alexander Kurz"
 LIC02	DB	"   "
 GPL01	DB	"   This program is free software; you can redistribute it and/or modify"
 GPL02	DB	"   it under the terms of the GNU General Public License as published by"
