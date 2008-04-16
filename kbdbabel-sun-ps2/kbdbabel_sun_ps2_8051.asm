@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Sun to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.9 2007/07/09 09:40:35 akurz Exp $
+; $Id: kbdbabel_sun_ps2_8051.asm,v 1.7 2008/04/16 21:30:38 akurz Exp $
 ;
 ; Clock/Crystal: 11.0592MHz.
 ; alternatively 18.432MHz and 14.7456 may be used.
@@ -74,7 +74,7 @@ ATTXBreakF	bit	B20.3	; Release/Break-Code flag
 ATTXMasqF	bit	B20.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
 ATTXParF	bit	B20.5	; TX-AT-Parity bit
 ATTFModF	bit	B20.6	; Timer modifier: alarm clock or clock driver
-MiscSleepF	bit	B20.7	; sleep timer active flag
+MiscSleepT0F	bit	B20.7	; sleep timer active flag
 ATCommAbort	bit	B21.0	; AT communication aborted
 ATHostToDevIntF	bit	B21.1	; host-do-device init flag triggered by ex1 / unused.
 ATHostToDevF	bit	B21.2	; host-to-device flag for timer
@@ -138,7 +138,7 @@ StackBottom	equ	50h	; the stack
 ; ATTFModF=0:
 ; timer is used as 16-bit alarm clock.
 ; Stop the timer after overflow, cleanup RX buffers
-; and clear MiscSleepF
+; and clear MiscSleepT0F
 ;
 ; ATTFModF=1:
 ; timer is used in 8-bit-auto-reload-mode to generate
@@ -159,7 +159,7 @@ HandleTF0:
 timerAsAlarmClock:
 ; -- stop timer 0
 	clr	tr0
-	clr	MiscSleepF
+	clr	MiscSleepT0F
 	reti
 
 ; --------------------------- AT clock driver, RX or TX
@@ -516,6 +516,11 @@ BufTX:
 	anl	a,#RingBufSizeMask
 	jz	BufTXEnd
 
+	; inter-character delay 0.13ms
+	call	timer0_130u_init
+BufTXWaitDelay:
+	jb	MiscSleepT0F,BufTXWaitDelay
+
 	; -- get data from buffer
 	mov	a,RingBufPtrOut
 	add	a,#RingBuf
@@ -704,6 +709,28 @@ ATCPDone:
 	ret
 
 ;----------------------------------------------------------
+; check if there is AT data to send
+;----------------------------------------------------------
+ATTX:
+; -- Device-to-Host communication
+	; -- check if there is data to send, send data
+	call	BufTX
+
+	; -- keyboard reset/cold start: send AAh after some delay
+	jnb	ATCmdResetF,ATTXWaitDelayEnd
+	clr	ATCmdResetF
+	; -- optional delay after faked cold start
+	; yes, some machines will not boot without this, e.g. IBM PS/ValuePoint 433DX/D
+	call	timer0_20ms_init
+ATTXResetDelay:
+	jb	MiscSleepT0F,ATTXResetDelay
+	; -- send "self test passed"
+	mov	r2,#0AAh
+	call	RingBufCheckInsert
+ATTXWaitDelayEnd:
+	ret
+
+;----------------------------------------------------------
 ; helper: delay clock line status change for 10 microseconds
 ; FIXME: this is X-tal frequency dependant
 ;----------------------------------------------------------
@@ -803,7 +830,7 @@ timer0_init:
 ;----------------------------------------------------------
 ; init timer 0 in 16 bit mode for inter-char delay of 0.13ms
 ;----------------------------------------------------------
-timer0_diag_init:
+timer0_130u_init:
 	clr	tr0
 	anl	tmod, #0f0h	; clear all lower bits
 	orl	tmod, #01h;	; M0,M1, bit0,1 in TMOD, timer 0 in mode 1, 16bit
@@ -811,7 +838,7 @@ timer0_diag_init:
 	mov	tl0, #interval_tl_130u_11059_2k
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	clr	ATTFModF	; see timer 0 interrupt code
-	setb	MiscSleepF
+	setb	MiscSleepT0F
 	setb	tr0		; go
 	ret
 
@@ -826,14 +853,14 @@ timer0_20ms_init:
 	mov	tl0, #interval_tl_20m_11059_2k
 	setb	et0		; (IE.1) enable timer 0 interrupt
 	clr	ATTFModF	; see timer 0 interrupt code
-	setb	MiscSleepF
+	setb	MiscSleepT0F
 	setb	tr0		; go
 	ret
 
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_sun_ps2_8051.asm,v 1.6 2007/09/27 20:51:00 akurz Exp $"
+RCSId	DB	"$KbdBabel: kbdbabel_sun_ps2_8051.asm,v 1.10 2007/11/10 21:30:02 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -844,7 +871,6 @@ Start:
 	; -- init UART and timer0/1
 ;	acall	uart_timer2_init
 	acall	uart_timer1_init
-	acall	timer0_diag_init
 
 	; -- enable interrupts int0
 	setb	ea
@@ -872,19 +898,19 @@ Loop:
 	; -- check if AT communication active.
 	jb	ATTFModF,Loop
 
-	; -- delay flag
-;	jb	MiscSleepF,Loop
+	; -- check AT line status, clock line must not be busy
+	jnb	p3.3,Loop
+
+	; -- check for AT RX data
+	jnb	p3.5,LoopATRX
+
+	; -- send data, if data is present
+	call	ATTX
 
 	; -- check if commands may be sent to Sun Keyboard
 	jb	SunSetLedF,LoopSunLED
 
-	; -- check AT line status, clock line must not be busy
-	jnb	p3.3,Loop
-
-	; -- check data line for RX or TX status
-	jb	p3.5,LoopATTX
-
-	sjmp	LoopATRX
+	sjmp	loop
 
 ;----------------------------------------------------------
 ; helpers for the main loop
@@ -927,35 +953,6 @@ LoopATRX:
 LoopTXWaitSent:
 	jb	ATTFModF,LoopTXWaitSent
 LoopCheckATEnd:
-	ljmp	Loop
-
-
-; ----------------
-LoopATTX:
-; -- Device-to-Host communication
-	; -- send data on the AT line
-	; some delay 0.15ms
-	call	timer0_diag_init
-LoopTXWaitDelay:
-;	jb	PCRXActiveF,LoopTXWaitDelayEnd	; new receive in progress	; @@@@@@@@@@ FIXME
-	jb	MiscSleepF,LoopTXWaitDelay
-
-LoopSendData:
-	; send data
-	call	BufTX
-
-	; -- keyboard reset/cold start: send AAh after some delay
-	jnb	ATCmdResetF,LoopTXWaitDelayEnd
-	clr	ATCmdResetF
-	; -- optional delay of 20ms after faked cold start
-	; yes, some machines will not boot without this, e.g. IBM PS/ValuePoint 433DX/D
-	call	timer0_20ms_init
-LoopTXResetDelay:
-	jb	MiscSleepF,LoopTXResetDelay
-	; -- send "self test passed"
-	mov	r2,#0AAh
-	call	RingBufCheckInsert
-LoopTXWaitDelayEnd:
 	ljmp	Loop
 
 ; ----------------
