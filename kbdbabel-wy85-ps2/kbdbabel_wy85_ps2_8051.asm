@@ -1,11 +1,11 @@
 ; ---------------------------------------------------------------------
 ; Wyse WY-85 to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $Id: kbdbabel_wy85_ps2_8051.asm,v 1.6 2007/11/27 21:47:54 akurz Exp $
+; $Id: kbdbabel_wy85_ps2_8051.asm,v 1.7 2008/05/02 06:39:18 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz.
 ;
-; WY85 Keyboard connect:
+; Wyse Keyboard connect:
 ; DATA - p3.4   (Pin 14 on DIL40, Pin 8 on AT89C2051 PDIP20)
 ; CLOCK - p3.2  (Pin 12 on DIL40, Pin 6 on AT89C2051 PDIP20, Int 0)
 ;
@@ -30,11 +30,11 @@
 ; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_wy85_ps2_8051
 ; write kbdbabel_wy85_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
-; Copyright 2007 by Alexander Kurz
+; Copyright 2007, 2008 by Alexander Kurz
 ;
 ; This is free software.
 ; You may copy and redistibute this software according to the
-; GNU general public license version 3 or any later verson.
+; GNU general public license version 3 or any later version.
 ;
 ; ---------------------------------------------------------------------
 
@@ -50,24 +50,23 @@ B20		sfrb	20h	; bit adressable space
 B21		sfrb	21h
 B22		sfrb	22h
 B23		sfrb	23h
-InputBitBuf	equ	24h	; Keyboard input bit buffer
 ATBitCount	sfrb	25h	; AT scancode TX counter
 RawBuf		equ	26h	; raw scancode
 OutputBuf	equ	27h	; AT scancode
 TXBuf		equ	28h	; AT scancode TX buffer
-WY85InBuf	sfrb	29h	; WY85 bit compare new data buffer, must be bit-adressable
-WY85XORBuf	sfrb	2ah	; WY85 bit compare XOR-result buffer, must be bit-adressable
+DKSHelperBuf	sfrb	29h	; DeltaKeyState bit compare helper buffer, must be bit-adressable
+DKSXORBuf	sfrb	2ah	; DeltaKeyState XOR-result helper buffer, must be bit-adressable
 RingBufPtrIn	equ	2eh	; Ring Buffer write pointer, starting with zero
 RingBufPtrOut	equ	2fh	; Ring Buffer read pointer, starting with zero
 ATRXBuf		equ	30h	; AT host-to-dev buffer
 ATRXCount	equ	31h
 ATRXResendBuf	equ	32h	; for AT resend feature
-WY85TRBitCount	equ	33h	; Interrupt handler Bit Count
-WY85TRWordCount	equ	34h	; Interrupt handler Word Count
-WY85BitCount	equ	35h	; WY85 Bit counter
-WY85ByteCount	equ	36h	; WY85 Byte countera
-WY85XltPtr	equ	37h	; Scancode-Translation-Table-Pinter / Offset
-WY85ByteNum	equ	16	; Number of bytes to be processed
+RXBitCount	equ	33h	; Interrupt handler Bit Count
+RXWordCount	equ	34h	; Interrupt handler Word Count
+DKSBitCount	equ	35h	; DeltaKeyState Bit counter
+DKSByteCount	equ	36h	; DeltaKeyState Byte counter
+DKSXltOffset	equ	37h	; DeltaKeyState Scancode-Translation-Table-Offset
+DKSBytes	equ	16	; Readonly, Number of state bytes to be processed
 
 ;------------------ bits
 ATTXMasqPauseF	bit	B20.0	; TX-AT-Masq-Char-Bit (for Pause-Key)
@@ -88,13 +87,16 @@ ATCmdLedF	bit	B21.6	; AT command processing: set LED
 ATCmdScancodeF	bit	B21.7	; AT command processing: set scancode
 ;		bit	B22.0
 RXCompleteF	bit	B22.1	; full and correct byte-received
-TF1ModF		bit	B22.2	; WY85-Timer Modifier:  Sleep=0, Clock-Generator=1
+TF1ModF		bit	B22.2	; Keyboard RX-Timer Modifier:  Sleep=0, Clock-Generator=1
 MiscSleepT1F	bit	B22.3	; sleep timer active flag, timer 1
-WY85ClockF	bit	B22.4	; KC85 Clock transmit active
+RXActiveF	bit	B22.4	; Keyboard Clock transmit active
+ATLedScrollF	bit	B22.5
+ATLedNumF	bit	B22.6
+ATLedCapsF	bit	B22.7
 
 ;------------------ arrays
-WY85BitBuf1	equ	38h	; size is 20 byte
-WY85BitBuf2	equ	4ch	; size is 20 byte
+KeyStateBuf1	equ	38h	; size is 20 byte
+KeyStateBuf2	equ	4ch	; size is 20 byte
 RingBuf		equ	60h
 RingBufSizeMask	equ	0fh	; 16 byte ring-buffer size
 
@@ -111,13 +113,15 @@ StackBottom	equ	70h	; the stack
 ;----------------------------------------------------------
 ;----------------------------
 	org	03h	; external interrupt 0
-	ljmp	HandleInt0
+	reti
+;	ljmp	HandleInt0
 ;----------------------------
 	org	0bh	; handle TF0
 	ljmp	HandleTF0
 ;----------------------------
 	org	13h	; Int 1
-	ljmp	HandleInt1
+	reti
+;	ljmp	HandleInt1
 ;----------------------------
 	org	1bh	; handle TF1
 	ljmp	HandleTF1
@@ -129,20 +133,6 @@ StackBottom	equ	70h	; the stack
 ;	ljmp	HandleTF2
 
 	org	033h
-;----------------------------------------------------------
-; int0 handler:
-; Get Bits by rotation into InputBitBuf.
-;----------------------------------------------------------
-HandleInt0:
-	push	acc
-	push	psw
-;	clr	p3.7
-; --------------------------- done
-Int0Return:
-;	setb	p3.7
-	pop	psw
-	pop	acc
-	reti
 
 ;----------------------------------------------------------
 ; timer 1 int handler used for different purposes
@@ -154,7 +144,7 @@ Int0Return:
 ;
 ; TF1ModF=1:
 ; timer is used in 8-bit-auto-reload-mode to generate
-; 160 WY85 scancode clock cycles with 15-40 microseconds timings.
+; 152-160 Wyse scancode clock cycles with 15-40 microseconds timings.
 ; In worst case this routine takes 40 processor cycles.
 ;
 ; Registers used: r5,r6
@@ -185,28 +175,26 @@ timer1AsClockTimer:
 	; --- store 8 bit to the 20-byte-buffer
 ;	clr	p1.0
 	xch	a,r1		; 1
-	mov	a,WY85TRWordCount	; 2
-	add	a,#WY85BitBuf1	; 2
+	mov	a,RXWordCount	; 2
+	add	a,#KeyStateBuf1	; 2
 	xch	a,r1		; 1
 	cpl	a		; 1
 	mov	@r1,a		; 1
-	inc	WY85TRWordCount	; 2
+	inc	RXWordCount	; 2
 ;	setb	p1.0
 
 timer1NotSaveWord:
 	clr	p3.2		; 1,18/28
-	nop			; 1
-	setb	p3.2		; 1,20/30
+	; --- 152-160-clocks
+	djnz	RXBitCount,timer1NotFin	; 2,20/30
 
-	; --- 160-clocks
-	djnz	WY85TRBitCount,timer1Return	; 2,22/32
-
-	; --- 160 clocks finished
-	clr	WY85ClockF
+	; --- 152-160 clocks finished
+	clr	RXActiveF
 	setb	RXCompleteF
-	clr	p3.2
 	clr	tr1
-;	sjmp	timer1Return
+	sjmp	timer1Return
+timer1NotFin:
+	setb	p3.2		; 1,21/31
 
 timer1Return:
 	pop	psw		; 2
@@ -515,7 +503,6 @@ timerRXEnd:				; total 7
 ; PF3 -> KP*
 ; PF4 -> KP+
 ;----------------------------------------------------------
-
 ;----------------------------------------------------------
 ; WY85 to AT translaton table
 ;----------------------------------------------------------
@@ -577,101 +564,98 @@ RingBufFull:
 ; generate translated scancodes for changed bits.
 ;----------------------------------------------------------
 DeltaKeyState:
-	; -- check: bits 149 and 150 must be 1, bits 151-159 must be 0
+	; -- check keyboard id
 	clr	c
 	mov	a,#18
-	add	a,#WY85BitBuf1
+	add	a,#KeyStateBuf1
 	mov	r0,a
 	mov	a,@r0
-	anl	a,#0e0h
-	cjne	a,#060h,DeltaKeyStateEnd
-	inc	r0
-	mov	a,@r0
-	jnz	DeltaKeyStateEnd
+;	anl	a,#060h
+	cjne	a,#060h,DeltaKeyStateEnd	; 60h is the WY85 keyboard id
 
 	; -- translation table offset
-	mov	WY85XltPtr,#0
+	mov	DKSXltOffset,#0
 	; -- 16 byte
-	mov	WY85ByteCount,#WY85ByteNum
+	mov	DKSByteCount,#DKSBytes
 
 DeltaKeyStateByteLoop:
 	clr	p1.4
 	; -- get data from input buffer
 	clr	c
-	mov	a,#WY85ByteNum
-	subb	a,WY85ByteCount
-	add	a,#WY85BitBuf1
+	mov	a,#DKSBytes
+	subb	a,DKSByteCount
+	add	a,#KeyStateBuf1
 	mov	r0,a
 	mov	a,@r0
-	mov	WY85InBuf,a
+	mov	DKSHelperBuf,a
 
 	; -- get data from state buffer
 	clr	c
-	mov	a,#WY85ByteNum
-	subb	a,WY85ByteCount
-	add	a,#WY85BitBuf2
+	mov	a,#DKSBytes
+	subb	a,DKSByteCount
+	add	a,#KeyStateBuf2
 	mov	r0,a
 	mov	a,@r0
-	mov	WY85XORBuf,a
+	mov	DKSXORBuf,a
 
 	; -- store input data to state buffer
-	mov	a,WY85InBuf
+	mov	a,DKSHelperBuf
 	mov	@r0,a
 
 	; -- XOR input and state buffer
-	xrl	a,WY85XORBuf
-	mov	WY85XORBuf,a
+	xrl	a,DKSXORBuf
+	mov	DKSXORBuf,a
 
 	; -- changes?
 	jnz	DeltaKeyStateByteChange
 
-	; -- no changes: inc XLT-Pointer by 8
-	mov	a,WY85XltPtr
+	; -- no changes: inc XLT-Offset by 8
+	mov	a,DKSXltOffset
 	clr	c
 	add	a,#8
-	mov	WY85XltPtr,a
+	mov	DKSXltOffset,a
 	sjmp	DeltaKeyStateByteLoopEnd
 
 	; -- bits changed: do bit analysis
 DeltaKeyStateByteChange:
 	clr	p1.3
-	mov	WY85BitCount,#8
+	mov	DKSBitCount,#8
 
 DeltaKeyStateBitLoop:
 	clr	p1.3
-	jnb	WY85XORBuf.0,DeltaKeyStateBitLoopEnd
+	jnb	DKSXORBuf.0,DeltaKeyStateBitLoopEnd
 ;	clr	p1.0
 
 	; -- get make/break bit
-	mov	c,WY85InBuf.0
+	mov	c,DKSHelperBuf.0
 	cpl	c
 	mov	ATTXBreakF,c
 
 	; -- send data
-	mov	a,WY85XltPtr
+	mov	a,DKSXltOffset
 	mov	RawBuf,a
 	call	TranslateToBuf
 DeltaKeyStateBitLoopEnd:
 
 	; -- rotate XORed and input octet
-	mov	a,WY85InBuf
+	mov	a,DKSHelperBuf
 	rr	a
-	mov	WY85InBuf,a
-	mov	a,WY85XORBuf
+	mov	DKSHelperBuf,a
+	mov	a,DKSXORBuf
 	rr	a
-	mov	WY85XORBuf,a
+	mov	DKSXORBuf,a
 
-	; -- inc XLT-Pointer
-	inc	WY85XltPtr
+	; -- inc XLT-Offset
+	inc	DKSXltOffset
 
 ;	setb	p1.0
 	setb	p1.3
 
-	djnz	WY85BitCount,DeltaKeyStateBitLoop
+	djnz	DKSBitCount,DeltaKeyStateBitLoop
 
 DeltaKeyStateByteLoopEnd:
 	setb	p1.4
-	djnz	WY85ByteCount,DeltaKeyStateByteLoop
+	djnz	DKSByteCount,DeltaKeyStateByteLoop
 
 DeltaKeyStateEnd:
 	; -- clear received data flag
@@ -763,8 +747,8 @@ BufTX:
 BufTXWaitDelay:
 	jb	MiscSleepT0F,BufTXWaitDelay
 
-	; abort if new WY85 receive is in progress
-	jb	WY85ClockF,BufTXEnd
+	; abort if new receive from keyboard is in progress
+	jb	RXActiveF,BufTXEnd
 
 	; -- get data from buffer
 	mov	a,RingBufPtrOut
@@ -830,17 +814,21 @@ ATCPGo:
 	clr	ATCmdLedF
 	; NumLock
 	mov	c,acc.1
+	mov	ATLedNumF,c
 	cpl	c
 	mov	p1.5,c
 	; CapsLock
 	mov	c,acc.2
+	mov	ATLedCapsF,c
 	cpl	c
 	mov	p1.6,c
 	; ScrollLock
 	mov	c,acc.0
+	mov	ATLedScrollF,c
 	cpl	c
 	mov	p1.7,c
 	sjmp	ATCPSendAck
+
 ATCPNotEDarg:
 	; -- argument for 0xf0 command: set scancode.
 	jnb	ATCmdScancodeF,ATCPNotF0Arg
@@ -948,7 +936,7 @@ ATTX:
 ATTXResetDelay:
 	jb	MiscSleepT0F,ATTXResetDelay
 
-	; -- init the WY85-state buffer
+	; -- init the key-state buffer
 	call	DeltaKeyState
 
 	; -- send "self test passed"
@@ -1056,10 +1044,10 @@ uart_timer2_init:
 
 ;----------------------------------------------------------
 ; init timer 1 for interval timing (fast 8 bit reload)
-; for WY-85 Clock generation.
+; for Wyse Clock generation.
 ; interval is 25 microseconds
 ;----------------------------------------------------------
-timer1_wy85clk_init:
+timer1_WyseClk_init:
 	clr	tr1
 
 	; --- diag trigger
@@ -1069,8 +1057,26 @@ timer1_wy85clk_init:
 
 	setb	TF1ModF			; see timer 1 interrupt code
 	mov	r6,#8			; 8 bits per word
-	mov	WY85TRBitCount,#160	; clock counter
-	mov	WY85TRWordCount,#0
+;	mov	a,#159			; clock counter
+;
+;	; --- LEDs are controlled via the clock count
+;	jnb	ATLedScrollF,timer1_WyseClk_noScroll
+;	dec	a
+;timer1_WyseClk_noScroll:
+;
+;	jnb	ATLedNumF,timer1_WyseClk_noNum
+;	dec	a
+;	dec	a
+;timer1_WyseClk_noNum:
+;
+;	jnb	ATLedCapsF,timer1_WyseClk_noCaps
+;	subb	a,#4
+;timer1_WyseClk_noCaps:
+;
+;	mov	RXBitCount,a
+
+	mov	RXBitCount,#160	; there are no LEDs on the WY-85 keyboard
+	mov	RXWordCount,#0
 
 	anl	tmod, #0fh	; clear all lower bits
 	orl	tmod, #20h;	; 8-bit Auto-Reload Timer, mode 2
@@ -1080,7 +1086,7 @@ timer1_wy85clk_init:
 
 	setb	p3.2
 
-	setb	WY85ClockF
+	setb	RXActiveF
 	setb	tr1		; go
 	ret
 
@@ -1149,7 +1155,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$KbdBabel: kbdbabel_wy85_ps2_8051.asm,v 1.7 2007/11/27 21:42:13 akurz Exp $"
+RCSId	DB	"$KbdBabel: kbdbabel_wy85_ps2_8051.asm,v 1.10 2008/05/01 16:49:17 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1170,15 +1176,12 @@ InitResetDelay:
 	djnz	r0,InitResetDelayLoop
 
 	; -- init UART and timer0/1
-;	acall	timer1_wy85clk_init
+;	acall	timer1_WyseClk_init
 ;	acall	timer0_130u_init
 
-	; -- enable interrupt int0
-	setb	ex0		; external interupt 0 enable
-	setb	it0		; falling edge trigger for int 0
-
-	; -- disable interrupt int1
-	clr	ex1		; external interupt 1 enable
+	; -- external interrupts
+	clr	ex0		; disable external interupt 0
+	clr	ex1		; disable external interupt 1
 
 	; -- clear all flags
 	mov	B20,#0
@@ -1195,18 +1198,18 @@ InitResetDelay:
 
 ; ----------------
 Loop:
-	; -- check WY85-Pause
-	jb	TF1ModF, LoopWY85Clock
-	jb	MiscSleepT1F,LoopWY85Done
-	acall	timer1_wy85clk_init
-	sjmp	LoopWY85Done
+	; -- check Keyboard RX-Poll-Pause
+	jb	TF1ModF, LoopKbdClock
+	jb	MiscSleepT1F,LoopKbdDone
+	acall	timer1_WyseClk_init
+	sjmp	LoopKbdDone
 
-	; -- check if 160 WY85-Clocks are sent, start delay timer when finished
-LoopWY85Clock:
-	jb	WY85ClockF,LoopWY85Done
+	; -- check if Keyboard-Clocks are sent, start delay timer when finished
+LoopKbdClock:
+	jb	RXActiveF,LoopKbdDone
 	call	timer1_10ms_init
 
-LoopWY85Done:
+LoopKbdDone:
 	; -- check Keyboard receive status
 	jb	RXCompleteF,LoopProcessData
 
@@ -1222,15 +1225,15 @@ LoopWY85Done:
 	; -- check for AT RX data
 	jnb	p3.5,LoopATRX
 
-	; -- stay in idle mode when WY85 data transfer is active
-	jb	WY85ClockF,Loop
+	; -- stay in idle mode when Wyse data transfer is active
+	jb	RXActiveF,Loop
 
 	; -- send data, if data is present
 	call	ATTX
 
 ;	; -- check if AT communication active.
 ;	jb	TFModF,Loop
-;	
+;
 ;	; -- may do other things while idle here ...
 
 	sjmp loop
@@ -1271,7 +1274,7 @@ LoopCheckATEnd:
 ;----------------------------------------------------------
 ; Still space on the ROM left for the license?
 ;----------------------------------------------------------
-LIC01	DB	"   Copyright 2007 by Alexander Kurz"
+LIC01	DB	"   Copyright 2007, 2008 by Alexander Kurz"
 LIC02	DB	"   "
 GPL01	DB	"   This program is free software; you can redistribute it and/or modify"
 GPL02	DB	"   it under the terms of the GNU General Public License as published by"
@@ -1285,3 +1288,4 @@ GPL09	DB	"   GNU General Public License for more details."
 GPL10	DB	"   "
 ; ----------------
 	end
+

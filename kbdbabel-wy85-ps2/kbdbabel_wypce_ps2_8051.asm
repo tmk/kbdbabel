@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Wyse WY-PCE to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $Id: kbdbabel_wypce_ps2_8051.asm,v 1.1 2008/04/02 22:24:02 akurz Exp $
+; $Id: kbdbabel_wypce_ps2_8051.asm,v 1.2 2008/05/02 06:39:18 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz.
 ;
@@ -55,19 +55,19 @@ ATBitCount	sfrb	25h	; AT scancode TX counter
 RawBuf		equ	26h	; raw scancode
 OutputBuf	equ	27h	; AT scancode
 TXBuf		equ	28h	; AT scancode TX buffer
-WyseInBuf	sfrb	29h	; Wyse bit compare new data buffer, must be bit-adressable
-WyseXORBuf	sfrb	2ah	; Wyse bit compare XOR-result buffer, must be bit-adressable
+DKSHelperBuf	sfrb	29h	; DeltaKeyState bit compare helper buffer, must be bit-adressable
+DKSXORBuf	sfrb	2ah	; DeltaKeyState XOR-result helper buffer, must be bit-adressable
 RingBufPtrIn	equ	2eh	; Ring Buffer write pointer, starting with zero
 RingBufPtrOut	equ	2fh	; Ring Buffer read pointer, starting with zero
 ATRXBuf		equ	30h	; AT host-to-dev buffer
 ATRXCount	equ	31h
 ATRXResendBuf	equ	32h	; for AT resend feature
-WyseTRBitCount	equ	33h	; Interrupt handler Bit Count
-WyseTRWordCount	equ	34h	; Interrupt handler Word Count
-WyseBitCount	equ	35h	; Wyse Bit counter
-WyseByteCount	equ	36h	; Wyse Byte counter
-WyseXltPtr	equ	37h	; Scancode-Translation-Table-Pinter / Offset
-WyseByteNum	equ	16	; Number of bytes to be processed
+RXBitCount	equ	33h	; Interrupt handler Bit Count
+RXWordCount	equ	34h	; Interrupt handler Word Count
+DKSBitCount	equ	35h	; DeltaKeyState Bit counter
+DKSByteCount	equ	36h	; DeltaKeyState Byte counter
+DKSXltOffset	equ	37h	; DeltaKeyState Scancode-Translation-Table-Offset
+DKSBytes	equ	16	; Readonly, Number of state bytes to be processed
 
 ;------------------ bits
 ATTXMasqPauseF	bit	B20.0	; TX-AT-Masq-Char-Bit (for Pause-Key)
@@ -88,16 +88,17 @@ ATCmdLedF	bit	B21.6	; AT command processing: set LED
 ATCmdScancodeF	bit	B21.7	; AT command processing: set scancode
 ;		bit	B22.0
 RXCompleteF	bit	B22.1	; full and correct byte-received
-TF1ModF		bit	B22.2	; Wyse-Timer Modifier:  Sleep=0, Clock-Generator=1
+TF1ModF		bit	B22.2	; Keyboard RX-Timer Modifier:  Sleep=0, Clock-Generator=1
 MiscSleepT1F	bit	B22.3	; sleep timer active flag, timer 1
-WyseClockF	bit	B22.4	; Wyse Clock transmit active
+RXActiveF	bit	B22.4	; Keyboard Clock transmit active
 ATLedScrollF	bit	B22.5
 ATLedNumF	bit	B22.6
 ATLedCapsF	bit	B22.7
 
+
 ;------------------ arrays
-WyseBitBuf1	equ	38h	; size is 20 byte
-WyseBitBuf2	equ	4ch	; size is 20 byte
+KeyStateBuf1	equ	38h	; size is 20 byte
+KeyStateBuf2	equ	4ch	; size is 20 byte
 RingBuf		equ	60h
 RingBufSizeMask	equ	0fh	; 16 byte ring-buffer size
 
@@ -114,13 +115,15 @@ StackBottom	equ	70h	; the stack
 ;----------------------------------------------------------
 ;----------------------------
 	org	03h	; external interrupt 0
-	ljmp	HandleInt0
+	reti
+;	ljmp	HandleInt0
 ;----------------------------
 	org	0bh	; handle TF0
 	ljmp	HandleTF0
 ;----------------------------
 	org	13h	; Int 1
-	ljmp	HandleInt1
+	reti
+;	ljmp	HandleInt1
 ;----------------------------
 	org	1bh	; handle TF1
 	ljmp	HandleTF1
@@ -132,20 +135,6 @@ StackBottom	equ	70h	; the stack
 ;	ljmp	HandleTF2
 
 	org	033h
-;----------------------------------------------------------
-; int0 handler:
-; Get Bits by rotation into InputBitBuf.
-;----------------------------------------------------------
-HandleInt0:
-	push	acc
-	push	psw
-;	clr	p3.7
-; --------------------------- done
-Int0Return:
-;	setb	p3.7
-	pop	psw
-	pop	acc
-	reti
 
 ;----------------------------------------------------------
 ; timer 1 int handler used for different purposes
@@ -188,21 +177,21 @@ timer1AsClockTimer:
 	; --- store 8 bit to the 20-byte-buffer
 ;	clr	p1.0
 	xch	a,r1		; 1
-	mov	a,WyseTRWordCount	; 2
-	add	a,#WyseBitBuf1	; 2
+	mov	a,RXWordCount	; 2
+	add	a,#KeyStateBuf1	; 2
 	xch	a,r1		; 1
 	cpl	a		; 1
 	mov	@r1,a		; 1
-	inc	WyseTRWordCount	; 2
+	inc	RXWordCount	; 2
 ;	setb	p1.0
 
 timer1NotSaveWord:
 	clr	p3.2		; 1,18/28
 	; --- 152-160-clocks
-	djnz	WyseTRBitCount,timer1NotFin	; 2,20/30
+	djnz	RXBitCount,timer1NotFin	; 2,20/30
 
 	; --- 152-160 clocks finished
-	clr	WyseClockF
+	clr	RXActiveF
 	setb	RXCompleteF
 	clr	tr1
 	sjmp	timer1Return
@@ -569,95 +558,95 @@ DeltaKeyState:
 	; -- check keyboard id
 	clr	c
 	mov	a,#18
-	add	a,#WyseBitBuf1
+	add	a,#KeyStateBuf1
 	mov	r0,a
 	mov	a,@r0
 ;	anl	a,#083h
 	cjne	a,#083h,DeltaKeyStateEnd	; 83h is the Wyse-PCE keyboard id
 
 	; -- translation table offset
-	mov	WyseXltPtr,#0
+	mov	DKSXltOffset,#0
 	; -- 16 byte
-	mov	WyseByteCount,#WyseByteNum
+	mov	DKSByteCount,#DKSBytes
 
 DeltaKeyStateByteLoop:
 	clr	p1.4
 	; -- get data from input buffer
 	clr	c
-	mov	a,#WyseByteNum
-	subb	a,WyseByteCount
-	add	a,#WyseBitBuf1
+	mov	a,#DKSBytes
+	subb	a,DKSByteCount
+	add	a,#KeyStateBuf1
 	mov	r0,a
 	mov	a,@r0
-	mov	WyseInBuf,a
+	mov	DKSHelperBuf,a
 
 	; -- get data from state buffer
 	clr	c
-	mov	a,#WyseByteNum
-	subb	a,WyseByteCount
-	add	a,#WyseBitBuf2
+	mov	a,#DKSBytes
+	subb	a,DKSByteCount
+	add	a,#KeyStateBuf2
 	mov	r0,a
 	mov	a,@r0
-	mov	WyseXORBuf,a
+	mov	DKSXORBuf,a
 
 	; -- store input data to state buffer
-	mov	a,WyseInBuf
+	mov	a,DKSHelperBuf
 	mov	@r0,a
 
 	; -- XOR input and state buffer
-	xrl	a,WyseXORBuf
-	mov	WyseXORBuf,a
+	xrl	a,DKSXORBuf
+	mov	DKSXORBuf,a
 
 	; -- changes?
 	jnz	DeltaKeyStateByteChange
 
-	; -- no changes: inc XLT-Pointer by 8
-	mov	a,WyseXltPtr
+	; -- no changes: inc XLT-Offset by 8
+	mov	a,DKSXltOffset
 	clr	c
 	add	a,#8
-	mov	WyseXltPtr,a
+	mov	DKSXltOffset,a
 	sjmp	DeltaKeyStateByteLoopEnd
 
 	; -- bits changed: do bit analysis
 DeltaKeyStateByteChange:
 	clr	p1.3
-	mov	WyseBitCount,#8
+	mov	DKSBitCount,#8
 
 DeltaKeyStateBitLoop:
 	clr	p1.3
-	jnb	WyseXORBuf.0,DeltaKeyStateBitLoopEnd
+	jnb	DKSXORBuf.0,DeltaKeyStateBitLoopEnd
 ;	clr	p1.0
 
 	; -- get make/break bit
-	mov	c,WyseInBuf.0
+	mov	c,DKSHelperBuf.0
 	cpl	c
 	mov	ATTXBreakF,c
 
 	; -- send data
-	mov	a,WyseXltPtr
+	mov	a,DKSXltOffset
 	mov	RawBuf,a
 	call	TranslateToBuf
 DeltaKeyStateBitLoopEnd:
 
 	; -- rotate XORed and input octet
-	mov	a,WyseInBuf
+	mov	a,DKSHelperBuf
 	rr	a
-	mov	WyseInBuf,a
-	mov	a,WyseXORBuf
+	mov	DKSHelperBuf,a
+	mov	a,DKSXORBuf
 	rr	a
-	mov	WyseXORBuf,a
+	mov	DKSXORBuf,a
 
-	; -- inc XLT-Pointer
-	inc	WyseXltPtr
+	; -- inc XLT-Offset
+	inc	DKSXltOffset
 
 ;	setb	p1.0
 	setb	p1.3
 
-	djnz	WyseBitCount,DeltaKeyStateBitLoop
+	djnz	DKSBitCount,DeltaKeyStateBitLoop
 
 DeltaKeyStateByteLoopEnd:
 	setb	p1.4
-	djnz	WyseByteCount,DeltaKeyStateByteLoop
+	djnz	DKSByteCount,DeltaKeyStateByteLoop
 
 DeltaKeyStateEnd:
 	; -- clear received data flag
@@ -749,8 +738,8 @@ BufTX:
 BufTXWaitDelay:
 	jb	MiscSleepT0F,BufTXWaitDelay
 
-	; abort if new Wyse receive is in progress
-	jb	WyseClockF,BufTXEnd
+	; abort if new receive from keyboard is in progress
+	jb	RXActiveF,BufTXEnd
 
 	; -- get data from buffer
 	mov	a,RingBufPtrOut
@@ -938,7 +927,7 @@ ATTX:
 ATTXResetDelay:
 	jb	MiscSleepT0F,ATTXResetDelay
 
-	; -- init the Wyse-state buffer
+	; -- init the key-state buffer
 	call	DeltaKeyState
 
 	; -- send "self test passed"
@@ -1075,8 +1064,8 @@ timer1_WyseClk_noNum:
 	subb	a,#4
 timer1_WyseClk_noCaps:
 
-	mov	WyseTRBitCount,a
-	mov	WyseTRWordCount,#0
+	mov	RXBitCount,a
+	mov	RXWordCount,#0
 
 	anl	tmod, #0fh	; clear all lower bits
 	orl	tmod, #20h;	; 8-bit Auto-Reload Timer, mode 2
@@ -1086,7 +1075,7 @@ timer1_WyseClk_noCaps:
 
 	setb	p3.2
 
-	setb	WyseClockF
+	setb	RXActiveF
 	setb	tr1		; go
 	ret
 
@@ -1155,7 +1144,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$KbdBabel: kbdbabel_wypce_ps2_8051.asm,v 1.1 2008/02/17 13:09:41 akurz Exp $"
+RCSId	DB	"$KbdBabel: kbdbabel_wypce_ps2_8051.asm,v 1.2 2008/05/01 16:49:37 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1179,12 +1168,9 @@ InitResetDelay:
 ;	acall	timer1_WyseClk_init
 ;	acall	timer0_130u_init
 
-	; -- enable interrupt int0
-	setb	ex0		; external interupt 0 enable
-	setb	it0		; falling edge trigger for int 0
-
-	; -- disable interrupt int1
-	clr	ex1		; external interupt 1 enable
+	; -- external interrupts
+	clr	ex0		; disable external interupt 0
+	clr	ex1		; disable external interupt 1
 
 	; -- clear all flags
 	mov	B20,#0
@@ -1201,18 +1187,19 @@ InitResetDelay:
 
 ; ----------------
 Loop:
-	; -- check Wyse-Pause
-	jb	TF1ModF, LoopWyseClock
-	jb	MiscSleepT1F,LoopWyseDone
+	; -- check Keyboard RX-Poll-Pause
+	jb	TF1ModF, LoopKbdClock
+	jb	MiscSleepT1F,LoopKbdDone
 	acall	timer1_WyseClk_init
-	sjmp	LoopWyseDone
+	sjmp	LoopKbdDone
 
-	; -- check if 152-160 Wyse-Clocks are sent, start delay timer when finished
-LoopWyseClock:
-	jb	WyseClockF,LoopWyseDone
+
+	; -- check if Keyboard-Clocks are sent, start delay timer when finished
+LoopKbdClock:
+	jb	RXActiveF,LoopKbdDone
 	call	timer1_10ms_init
 
-LoopWyseDone:
+LoopKbdDone:
 	; -- check Keyboard receive status
 	jb	RXCompleteF,LoopProcessData
 
@@ -1229,7 +1216,7 @@ LoopWyseDone:
 	jnb	p3.5,LoopATRX
 
 	; -- stay in idle mode when Wyse data transfer is active
-	jb	WyseClockF,Loop
+	jb	RXActiveF,Loop
 
 	; -- send data, if data is present
 	call	ATTX
