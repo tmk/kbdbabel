@@ -2,9 +2,9 @@
 ; KbdBabel Common constants and definitions
 ; for various keyboard interval und timing issues.
 ;
-; $KbdBabel: kbdbabel_intervals.inc,v 1.4 2007/11/08 23:18:44 akurz Exp $
+; $Id: kbdbabel_intervals.inc,v 1.5 2008/05/21 08:46:07 akurz Exp $
 ;
-; Copyright 2007 by Alexander Kurz
+; Copyright 2007,2008 by Alexander Kurz
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -27,6 +27,9 @@ interval_t0_50u_11059_2k	equ	209
 
 ; 45mus@11.0592MHz -> th0 and tl0=214 or 41 processor cycles	; (256-11059.2*0.045/12)
 interval_t0_45u_11059_2k	equ	214
+
+; 50mus@12.000MHz -> th0 and tl0=206 or 50 processor cycles	; (256-12000*0.05/12)
+interval_t0_50u_12M		equ	206
 
 ; 45mus@12.000MHz -> th0 and tl0=211 or 45 processor cycles	; (256-12000*0.045/12)
 interval_t0_45u_12M		equ	211
@@ -64,6 +67,9 @@ interval_t0_80u_12M		equ	176
 ;------------------ WY-85 interval generation with timer 1 in 8 bit mode
 ; 17mus@24.000MHz -> th0 and tl0=222 or 34 processor cycles	; (256-24000*0.017/12)
 interval_t1_17u_24M		equ	222
+
+; 20mus@24.000MHz -> th0 and tl0=216 or 40 processor cycles	; (256-24000*0.02/12)
+interval_t1_20u_24M		equ	216
 
 ; 25mus@24.000MHz -> th0 and tl0=206 or 50 processor cycles	; (256-24000*0.025/12)
 interval_t1_25u_24M		equ	206
@@ -227,6 +233,10 @@ interval_tl_10m_24M		equ	224
 interval_th_1m_24M		equ	248
 interval_tl_1m_24M		equ	48
 
+; 0.5ms@24.000MHz -> th0,tl0=0fch,18h	; (65536-24000*0.5/12)
+interval_th_500u_24M		equ	252
+interval_tl_500u_24M		equ	12
+
 ; 0.3ms@24.000MHz -> th0,tl0=0fdh,A8h	; (65536-24000*.3/12)
 interval_th_300u_24M		equ	253
 interval_tl_300u_24M		equ	168
@@ -238,6 +248,10 @@ interval_tl_15u_24M		equ	212
 ; 0.128ms@24.000MHz -> th0,tl0=0ffh,00h	; (65536-24000*.128/12)
 interval_th_128u_24M		equ	255
 interval_tl_128u_24M		equ	0
+
+; 80mus@24MHz -> th0,tl0=0ffh,60h	; (65536-24000*0.08/12)
+interval_th_80u_24M		equ	255
+interval_tl_80u_24M		equ	96
 
 ; 40mus@24MHz -> th0,tl0=0ffh,b0h	; (65536-24000*0.04/12)
 interval_th_40u_24M		equ	255
