@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Symbolics 3600 to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $Id: kbdbabel_symbolics_ps2_8051.asm,v 1.1 2008/05/03 09:06:41 akurz Exp $
+; $Id: kbdbabel_symbolics_ps2_8051.asm,v 1.2 2008/05/22 09:01:09 akurz Exp $
 ;
 ; Clock/Crystal: 12MHz.
 ;
@@ -91,7 +91,6 @@ RXCompleteF	bit	B22.1	; full and correct byte-received
 TF1ModF		bit	B22.2	; Keyboard RX-Timer Modifier:  Sleep=0, Clock-Generator=1
 MiscSleepT1F	bit	B22.3	; sleep timer active flag, timer 1
 RXActiveF	bit	B22.4	; Keyboard Clock transmit active
-RXSyncF		bit	B22.5	; Keyboard Clock Sync
 
 ;------------------ arrays
 KeyStateBuf1	equ	38h	; size is 20 byte
@@ -160,23 +159,26 @@ HandleTF1:
 
 ; --------------------------- timer is used as 8-bit clock generator
 timer1AsClockTimer:
-
-	setb	p3.2		; 1,18/28
-	call	nop20		; fixme
-	call	nop20
-	call	nop20
-	call	nop20
+	clr	p3.2		; 1,9
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	setb	p3.2		; 1,19
 	; --- sample one bit
-	mov	a,r5		; 1,9
+	mov	a,r5		; 1,20
 	rr	a		; 1
 	mov	c,p3.4		; 1
 	mov	acc.7,c		; 2
-	mov	r5,a		; 1,14
-
-	clr	p3.2		; 1,21/31
+	mov	r5,a		; 1,25
 
 	; --- 8 bits each byte
-	djnz	r6,timer1NotSaveWord	; 2,16
+	djnz	r6,timer1NotSaveWord	; 2,25
 	mov	r6,#8			; 1
 
 	; --- store 8 bit to the 20-byte-buffer
@@ -192,18 +194,13 @@ timer1AsClockTimer:
 timer1NotSaveWord:
 
 	; --- 121-clocks
-	djnz	RXBitCount,timer1Return	; 2,20/30
+	djnz	RXBitCount,timer1Return	; 2,27/38
 	; --- 152-160 clocks finished
 	clr	RXActiveF
 	setb	RXCompleteF
 	clr	tr1
 
 timer1Return:
-	; --- sync pulse
-	jnb	RXSyncF,timer1ReturnNoSync
-;	setb	p3.4
-	clr	RXSyncF
-timer1ReturnNoSync:
 
 	pop	psw		; 2
 	pop	acc		; 2
@@ -486,14 +483,14 @@ timerRXEnd:				; total 7
 ;----------------------------------------------------------
 ; Symbolics 3600 Keyboard to AT translaton table
 ;----------------------------------------------------------
-Symbolics2ATXlt0	DB	  0h,  00h,  58h,  00h,  11h,  14h,  00h,  7eh,   00h,   0h,   0h,   0h,  00h,  00h,  00h,  14h
-Symbolics2ATXlt1	DB	 29h,  11h,  00h,  69h,   0h,   0h,   0h,  1ah,   21h,  32h,  3ah,  49h,  59h,  00h,  00h,   0h
-Symbolics2ATXlt2	DB	  0h,   0h,  12h,  22h,  2ah,  31h,  41h,  4ah,   00h,  00h,   0h,   0h,   0h,  71h,  1bh,  2bh
-Symbolics2ATXlt3	DB	 33h,  42h,  4ch,  5ah,  00h,   0h,   0h,   0h,   00h,  1ch,  23h,  34h,  3bh,  4bh,  52h,  00h
-Symbolics2ATXlt4	DB	  0h,   0h,   0h,  00h,  1dh,  2dh,  35h,  43h,   4dh,  5bh,  00h,   0h,   0h,   0h,  0dh,  15h
-Symbolics2ATXlt5	DB	 24h,  2ch,  3ch,  44h,  54h,  66h,   0h,   0h,    0h,  0eh,  1eh,  25h,  36h,  3eh,  45h,  55h
-Symbolics2ATXlt6	DB	 00h,   0h,   0h,   0h,  16h,  26h,  2eh,  3dh,   46h,  4eh,  5dh,  61h,   0h,   0h,   0h,  76h
-Symbolics2ATXlt7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXlt0	DB	  0h,  00h,  58h,  0ah,  11h,  14h,  83h,  7eh,   00h,   0h,   0h,   0h,  05h,  73h,  83h,  14h
+Symbolics2ATXlt1	DB	 29h,  11h,  0ah,  69h,   0h,   0h,   0h,  1ah,   21h,  32h,  3ah,  49h,  59h,  00h,  0bh,   0h
+Symbolics2ATXlt2	DB	  0h,   0h,  12h,  22h,  2ah,  31h,  41h,  4ah,   73h,  07h,   0h,   0h,   0h,  71h,  1bh,  2bh
+Symbolics2ATXlt3	DB	 33h,  42h,  4ch,  5ah,  78h,   0h,   0h,   0h,   06h,  1ch,  23h,  34h,  3bh,  4bh,  52h,  00h
+Symbolics2ATXlt4	DB	  0h,   0h,   0h,  04h,  1dh,  2dh,  35h,  43h,   4dh,  5bh,  00h,   0h,   0h,   0h,  0dh,  15h
+Symbolics2ATXlt5	DB	 24h,  2ch,  3ch,  44h,  54h,  66h,   0h,   0h,    0h,  00h,  1eh,  25h,  36h,  3eh,  45h,  55h
+Symbolics2ATXlt6	DB	 5dh,   0h,   0h,   0h,  16h,  26h,  2eh,  3dh,   46h,  4eh,  0eh,  61h,   0h,   0h,   0h,  76h
+Symbolics2ATXlt7	DB	 00h,  00h,  00h,  00h,  00h,  0ch,  03h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 
 ;----------------------------------------------------------
 ; Symbolics 3600 Keyboard to AT translaton table
@@ -501,10 +498,12 @@ Symbolics2ATXlt7	DB	 00h,  00h,  00h,  00h,  00h,  00h,  00h,   0h,    0h,   0h,
 ; bit 0: E0-Escape
 ; bit 1: E0,12,E0-Escape (PrtScr)
 ; bit 2: send E1,14,77,E1,F0,14,F0,77 (Pause)
+; bit 3: Key is a switch, send make+break on keydown or keyup
+; bit 4: F-Mode Switch
 ;----------------------------------------------------------
-Symbolics2ATXlte0	DB	  0h,   0h,   0h,   0h,   0h,  01h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXlte0	DB	  0h,   0h,  08h,   0h,   0h,  01h,   0h,   0h,   18h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 Symbolics2ATXlte1	DB	  0h,  01h,   0h,  01h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
-Symbolics2ATXlte2	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,  01h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXlte2	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,  01h,   0h,   0h,  01h,   0h,   0h
 Symbolics2ATXlte3	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 Symbolics2ATXlte4	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 Symbolics2ATXlte5	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
@@ -1055,18 +1054,24 @@ nop20:
 ;----------------------------------------------------------
 ; init timer 1 for interval timing (fast 8 bit reload)
 ; for keyboard Clock generation.
-; interval is 25 microseconds
+; interval is 50 microseconds
 ;----------------------------------------------------------
 timer1_Clk_init:
 	clr	tr1
 
-	; --- diag trigger
-	clr	p3.7
-	nop
-	setb	p3.7
+	setb	p3.2
 
+	; --- reset line
 	clr	p3.1
-	acall	nop20
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
 	setb	p3.1
 
 	setb	TF1ModF			; see timer 1 interrupt code
@@ -1077,15 +1082,9 @@ timer1_Clk_init:
 
 	anl	tmod, #0fh	; clear all lower bits
 	orl	tmod, #20h;	; 8-bit Auto-Reload Timer, mode 2
-	mov	th1, #interval_t1_125u_12M
-	mov	tl1, #interval_t1_125u_12M
+	mov	th1, #interval_t0_50u_12M
+	mov	tl1, #interval_t0_50u_12M
 	setb	et1		; (IE.3) enable timer 1 interrupt
-
-	; --- sync pulse
-;	clr	p3.4
-	setb	RXSyncF
-
-	clr	p3.2
 
 	setb	RXActiveF
 	setb	tr1		; go
@@ -1157,7 +1156,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$KbdBabel: kbdbabel_symbolics_ps2_8051.asm,v 1.2 2008/05/03 09:03:42 akurz Exp $"
+RCSId	DB	"$KbdBabel: kbdbabel_symbolics_ps2_8051.asm,v 1.5 2008/05/22 08:54:37 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
