@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; Symbolics 3600 to AT/PS2 keyboard transcoder for 8051 type processors
 ;
-; $Id: kbdbabel_symbolics_ps2_8051.asm,v 1.2 2008/05/22 09:01:09 akurz Exp $
+; $Id: kbdbabel_symbolics_ps2_8051.asm,v 1.3 2008/05/30 08:47:31 akurz Exp $
 ;
 ; Clock/Crystal: 12MHz.
 ;
@@ -19,7 +19,7 @@
 ; ScrollLock	- p1.7	(Pin 8 on DIL40, Pin 19 on AT89C2051 PDIP20)
 ; CapsLock	- p1.6	(Pin 7 on DIL40, Pin 18 on AT89C2051 PDIP20)
 ; NumLock	- p1.5	(Pin 6 on DIL40, Pin 17 on AT89C2051 PDIP20)
-; Debug ByteTransLoop	- p1.4
+; F-Mode	- p1.4
 ; Debug BitTransLoop	- p1.3
 ; AT TX Communication abort	- p1.2
 ; AT RX Communication abort	- p1.1
@@ -91,6 +91,8 @@ RXCompleteF	bit	B22.1	; full and correct byte-received
 TF1ModF		bit	B22.2	; Keyboard RX-Timer Modifier:  Sleep=0, Clock-Generator=1
 MiscSleepT1F	bit	B22.3	; sleep timer active flag, timer 1
 RXActiveF	bit	B22.4	; Keyboard Clock transmit active
+SwitchKeyF	bit	B22.5	; Keyboard key is a mechanical switch.
+XltFF		bit	B22.6	; Switch for Keyboard F-Mode
 
 ;------------------ arrays
 KeyStateBuf1	equ	38h	; size is 20 byte
@@ -493,18 +495,31 @@ Symbolics2ATXlt6	DB	 5dh,   0h,   0h,   0h,  16h,  26h,  2eh,  3dh,   46h,  4eh,
 Symbolics2ATXlt7	DB	 00h,  00h,  00h,  00h,  00h,  0ch,  03h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 
 ;----------------------------------------------------------
+; Symbolics 3600 Keyboard to AT translaton table, F-Mode
+;----------------------------------------------------------
+Symbolics2ATXltF0	DB	  0h,  00h,  58h,   0h,  11h,  14h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,  14h
+Symbolics2ATXltF1	DB	 29h,  11h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,  59h,   0h,   0h,   0h
+Symbolics2ATXltF2	DB	  0h,   0h,  12h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXltF3	DB	 6bh,  75h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,  72h,  74h,   0h,   0h
+Symbolics2ATXltF4	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXltF5	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,  06h,  0ch,  0bh,  0ah,  09h,   0h
+Symbolics2ATXltF6	DB	  0h,   0h,   0h,   0h,  05h,  04h,  03h,  83h,   01h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXltF7	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+
+;----------------------------------------------------------
 ; Symbolics 3600 Keyboard to AT translaton table
 ; Bit-Table for two-byte-AT-Scancodes
 ; bit 0: E0-Escape
 ; bit 1: E0,12,E0-Escape (PrtScr)
 ; bit 2: send E1,14,77,E1,F0,14,F0,77 (Pause)
 ; bit 3: Key is a switch, send make+break on keydown or keyup
-; bit 4: F-Mode Switch
+; bit 4-6: same as bit 0-2 but for F-Mode
+; bit 7: F-Mode Switch
 ;----------------------------------------------------------
-Symbolics2ATXlte0	DB	  0h,   0h,  08h,   0h,   0h,  01h,   0h,   0h,   18h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
-Symbolics2ATXlte1	DB	  0h,  01h,   0h,  01h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXlte0	DB	  0h,   0h,  00h,   0h,   0h,  11h,   0h,   0h,   80h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXlte1	DB	  0h,  11h,   0h,  01h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 Symbolics2ATXlte2	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,  01h,   0h,   0h,  01h,   0h,   0h
-Symbolics2ATXlte3	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
+Symbolics2ATXlte3	DB	 10h,  10h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,  10h,  10h,   0h,   0h
 Symbolics2ATXlte4	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 Symbolics2ATXlte5	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
 Symbolics2ATXlte6	DB	  0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h,    0h,   0h,   0h,   0h,   0h,   0h,   0h,   0h
@@ -558,7 +573,7 @@ DeltaKeyState:
 	mov	DKSByteCount,#DKSBytes
 
 DeltaKeyStateByteLoop:
-	clr	p1.4
+;	clr	p1.4
 	; -- get data from input buffer
 	clr	c
 	mov	a,#DKSBytes
@@ -633,7 +648,7 @@ DeltaKeyStateBitLoopEnd:
 	djnz	DKSBitCount,DeltaKeyStateBitLoop
 
 DeltaKeyStateByteLoopEnd:
-	setb	p1.4
+;	setb	p1.4
 	djnz	DKSByteCount,DeltaKeyStateByteLoop
 
 DeltaKeyStateEnd:
@@ -656,11 +671,30 @@ TranslateToBuf:
 	mov	ATTXMasqPrtScrF,c
 	mov	c,acc.2
 	mov	ATTXMasqPauseF,c
+	mov	c,acc.3
+	mov	SwitchKeyF,c
+	mov	c,acc.7
+	jnc	TranslateToBufNotFBit
+	mov	c,ATTXBreakF
+	mov	p1.4,c
+	cpl	c
+	mov	XltFF,c
+TranslateToBufNotFBit:
+	mov	dptr,#Symbolics2ATXlt0
+
+	jnb	XltFF,TranslateToBufNotF
+	mov	c,acc.4
+	mov	ATTXMasqF,c
+	mov	c,acc.5
+	mov	ATTXMasqPrtScrF,c
+	mov	c,acc.6
+	mov	ATTXMasqPauseF,c
+	mov	dptr,#Symbolics2ATXltF0
+TranslateToBufNotF:
 
 	mov	a,RawBuf
 
 	; get AT scancode
-	mov	dptr,#Symbolics2ATXlt0
 	movc	a,@a+dptr
 	mov	OutputBuf,a
 
@@ -690,6 +724,27 @@ TranslateToBufNoPause:
 	; dont send zero scancodes
 	mov	a, OutputBuf
 	jz	TranslateToBufIgnoreZero
+
+	; -- mechanical switch key behaviour: send make/break for both key-up and key-down
+	jnb	SwitchKeyF,TranslateToBufNoSwitch
+	; send make, check for 0xE0 escape code
+	jnb	ATTXMasqF,TranslateToBufSwitchKey1NoEsc
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+TranslateToBufSwitchKey1NoEsc:
+	mov	r2, OutputBuf
+	call	RingBufCheckInsert
+	; send break, check for 0xE0 escape code
+	jnb	ATTXMasqF,TranslateToBufSwitchKey2NoEsc
+	mov	r2,#0E0h
+	call	RingBufCheckInsert
+TranslateToBufSwitchKey2NoEsc:
+	mov	r2,#0F0h
+	call	RingBufCheckInsert
+	mov	r2, OutputBuf
+	call	RingBufCheckInsert
+	sjmp	TranslateToBufEnd
+TranslateToBufNoSwitch:
 
 	; check for 0xE0 escape code
 	jnb	ATTXMasqF,TranslateToBufNoEsc
@@ -1156,7 +1211,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$KbdBabel: kbdbabel_symbolics_ps2_8051.asm,v 1.5 2008/05/22 08:54:37 akurz Exp $"
+RCSId	DB	"$KbdBabel: kbdbabel_symbolics_ps2_8051.asm,v 1.6 2008/05/26 21:29:52 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
