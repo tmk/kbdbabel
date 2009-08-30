@@ -2,9 +2,9 @@
 ; KbdBabel Common constants and definitions
 ; for various keyboard interval und timing issues.
 ;
-; $Id: kbdbabel_intervals.inc,v 1.5 2008/05/21 08:46:07 akurz Exp $
+; $Id: kbdbabel_intervals.inc,v 1.6 2009/08/30 15:58:03 akurz Exp $
 ;
-; Copyright 2007,2008 by Alexander Kurz
+; Copyright 2007 by Alexander Kurz
 ;
 ; This program is free software; you can redistribute it and/or modify
 ; it under the terms of the GNU General Public License as published by
@@ -39,6 +39,9 @@ interval_t0_40u_18432k		equ	194
 
 ; 40mus@22.1184MHz -> th0 and tl0=182 or 80 processor cycles	; (256-22118.4*0.04/12)
 interval_t0_40u_22118_4k	equ	182
+
+; 45mus@24.000MHz -> th0 and tl0=166 or 90 processor cycles	; (256-24000*0.045/12)
+interval_t0_45u_24M		equ	166
 
 ; 40mus@24.000MHz -> th0 and tl0=176 or 80 processor cycles	; (256-24000*0.04/12)
 interval_t0_40u_24M		equ	176
@@ -99,6 +102,14 @@ interval_t1_200u_11059_2k	equ	72
 
 ; 150mus@11.0592MHz -> th0 and tl0=118 or 138 processor cycles	; (256-11059.2*0.15/12)
 interval_t1_150u_11059_2k	equ	118
+
+;------------------ Qume scancode half-timing intervals generated with timer 1 in 8 bit mode
+; 70mus@24.000MHz -> th0 and tl0=116 or 140 processor cycles	; (256-24000*0.07/12)
+interval_t0_70u_24M		equ	116
+
+;------------------ PC/XT transmit scancode timing intervals generated with timer in 8 bit mode
+; 95mus@24.000MHz -> th0 and tl0=66 or 190 processor cycles	; (256-24000*0.095/12)
+interval_t0_95u_24M		equ	66
 
 ;----------------------------------------------------------
 ; misc 16-bit constants
@@ -282,6 +293,10 @@ interval_tl_9_bit		equ	0
 ; constants for UART bitrate generation
 ;----------------------------------------------------------
 ;------------------ bitrates generated with timer 1 in 8 bit mode
+; --- 600BPS: Sinix keyboard
+; 600BPS @18.432MHz -> tl1 and th1 = #96 with SMOD=1	; (256-2*18432/384/0.6)
+uart_t1_600_18432k		equ	96
+
 ; --- 1.2kBPS: Sun
 ; 1200BPS @3.6864MHz -> tl1 and th1 = #240 with SMOD=1	; (256-2*3686.4/384/1.2)
 uart_t1_1200_3686_4k		equ	240
@@ -322,6 +337,11 @@ uart_t1_31k25_24M		equ	252
 ; --- 9k6 with 18.432
 ; 9600BPS @18.432MHz -> tl1 and th1 = #246 with SMOD=1	; (256-2*18432/384/9.6)
 uart_t1_9600_18432k		equ	246
+
+; --- dirty 9k6 with 24MHz
+; precisely this is 9.6152kbps, 0.15% off the correct bitrate
+; 9600BPS @24MHz -> tl1 and th1 = #243 with SMOD=1	; (256-2*24000/384/9.6)
+uart_t1_dirty9600_24M		equ	243
 
 ;------------------ bitrates generated with timer 2
 ; 9600 BPS at 18.432MHz -> RCAP2H,RCAP2L=#0FFh,#0c4h	; (256-18432/32/9.6)
