@@ -1,7 +1,7 @@
 ; ---------------------------------------------------------------------
 ; PC/XT to AT/PS2 keyboard transcoder for 8051 type processors.
 ;
-; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.43 2007/11/18 12:12:50 akurz Exp $
+; $KbdBabel: kbdbabel_pcxt_ps2_8051.asm,v 1.47 2009/03/08 22:11:44 akurz Exp $
 ;
 ; Clock/Crystal: 24MHz or alternative 22.1184MHz or 18.432MHz.
 ; Note: PC/XT data bits are sampled on negative clock slope.
@@ -34,11 +34,11 @@
 ; $ p2bin -l \$ff -r 0-\$7ff kbdbabel_pcxt_ps2_8051
 ; write kbdbabel_pcxt_ps2_8051.bin on an empty 27C256 or AT89C2051
 ;
-; Copyright 2006, 2007 by Alexander Kurz
+; Copyright 2006-2009 by Alexander Kurz
 ;
 ; This is free software.
 ; You may copy and redistibute this software according to the
-; GNU general public license version 3 or any later verson.
+; GNU general public license version 3 or any later version.
 ;
 ; ---------------------------------------------------------------------
 
@@ -69,9 +69,9 @@ ATRXCount	equ	36h
 ATRXResendBuf	equ	37h	; for AT resend feature
 
 ;------------------ bits
-PCRXBitF	bit	B20.0	; RX-bit-buffer
-PCRXCompleteF	bit	B20.1	; full and correct byte-received
-PCRXActiveF	bit	B20.2	; receive in progress flag
+KbdRXBitF	bit	B20.0	; RX-bit-buffer
+KbdRXCompleteF	bit	B20.1	; full and correct byte-received
+KbdRXActiveF	bit	B20.2	; receive in progress flag
 ATTXBreakF	bit	B20.3	; Release/Break-Code flag
 ATTXMasqF	bit	B20.4	; TX-AT-Masq-Char-Bit (send two byte scancode)
 ATTXParF	bit	B20.5	; TX-AT-Parity bit
@@ -110,7 +110,7 @@ StackBottom	equ	50h	; the stack
 ;----------------------------
 	org	03h	; external interrupt 0
 	jnb	P3.4, HandleInt0	; this is time critical
-	setb	PCRXBitF
+	setb	KbdRXBitF
 	ljmp	HandleInt0
 ;----------------------------
 	org	0bh	; handle TF0
@@ -143,7 +143,7 @@ HandleInt0:
 	push	psw
 
 	; receive in progress flag
-	setb	PCRXActiveF
+	setb	KbdRXActiveF
 ; --------------------------- diag: check if PCXT-RX happens during AT-TX
 	; check if flag is set
 	jnb	ATTXActiveF,interCharFlagOk
@@ -154,7 +154,7 @@ interCharFlagOk:
 interCharTestEnd:
 ; --------------------------- get and save data samples
 ; -- write to mem, first 8 bits
-	mov	c,PCRXBitF	; new bit
+	mov	c,KbdRXBitF	; new bit
 	mov	a,KbBitBufL
 	rrc	a
 	mov	KbBitBufL,a
@@ -170,7 +170,7 @@ interCharTestEnd:
 ;	mov	p1,a
 
 ; -- reset bit buffer
-	clr	PCRXBitF
+	clr	KbdRXBitF
 
 ; --------------------------- get and save clock timings
 ; this is an optional extra-check for the received data.
@@ -209,7 +209,7 @@ interCharTestEnd:
 ; --------------------------- consistancy checks
 ; -- checks by bit number
 	mov	a,r7
-	jz	Int0Return	; bit zero
+	jz	Int0IncReturn	; bit zero
 	dec	a
 	jz	Int0StartBit	; start bit
 	clr	c
@@ -228,7 +228,7 @@ interCharTestEnd:
 	jnc	Int0Error
 
 	mov	a,r5
-	jnz	Int0Return
+	jnz	Int0IncReturn
 
 ; -- special handling for last bit: output
 	; start-bit must be 1
@@ -237,13 +237,13 @@ interCharTestEnd:
 	mov	a, KbBitBufL
 	mov	RawBuf, a
 	mov	r7,#0
-	setb	PCRXCompleteF	; fully received flag
-	clr	PCRXActiveF	; receive in progress flag
+	setb	KbdRXCompleteF	; fully received flag
+	clr	KbdRXActiveF	; receive in progress flag
 	sjmp	Int0Return
 
 Int0StartBit:
 ; -- start bit: calculate timings
-	clr	PCRXCompleteF
+	clr	KbdRXCompleteF
 	mov	a,r6
 	clr	c
 	rrc	a
@@ -255,7 +255,7 @@ Int0StartBit:
 	mov	KbClockMax,a
 	anl	KbBitBufL,#0f0h
 	mov	KbBitBufH,#0
-	sjmp	Int0Return
+	sjmp	Int0IncReturn
 
 Int0Error:
 ; -- cleanup buffers
@@ -263,11 +263,13 @@ Int0Error:
 	mov	KbBitBufH,#0
 	mov	r7,#0
 	clr	p1.4		; error LED on
+	sjmp	Int0Return
 
 ; --------------------------- done
-Int0Return:
+Int0IncReturn:
 ; -- inc the bit counter
 	inc	r7
+Int0Return:
 	pop	psw
 	pop	acc
 	reti
@@ -655,7 +657,7 @@ TranslateToBufPCXT:
 
 	; save raw scancode and clear received data flag
 	mov	r3,a
-	clr	PCRXCompleteF
+	clr	KbdRXCompleteF
 
 	; keyboard disabled?
 	jb	ATKbdDisableF,TranslateToBufEnd
@@ -732,7 +734,7 @@ BufTXWaitDelay:
 	jb	MiscSleepT0F,BufTXWaitDelay
 
 	; abort if new PC receive is in progress
-	jb	PCRXActiveF,BufTXEnd	; new receive in progress
+	jb	KbdRXActiveF,BufTXEnd	; new receive in progress
 
 	; -- get data from buffer
 	mov	a,RingBufPtrOut
@@ -1080,7 +1082,7 @@ timer0_20ms_init:
 ;----------------------------------------------------------
 ; Id
 ;----------------------------------------------------------
-RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.8 2007/11/18 12:21:51 akurz Exp $"
+RCSId	DB	"$Id: kbdbabel_pcxt_ps2_8051.asm,v 1.9 2009/08/31 06:33:16 akurz Exp $"
 
 ;----------------------------------------------------------
 ; main
@@ -1125,7 +1127,7 @@ InitResetDelay:
 ; ----------------
 Loop:
 	; -- check PC/XT receive status
-	jb	PCRXCompleteF,LoopProcessPCXTData
+	jb	KbdRXCompleteF,LoopProcessPCXTData
 
 	; -- check on new AT data received
 	jb	ATCmdReceivedF,LoopProcessATcmd
@@ -1140,7 +1142,7 @@ Loop:
 	jnb	p3.5,LoopATRX
 
 	; -- stay in idle mode when PC RX is active
-	jb	PCRXActiveF,Loop
+	jb	KbdRXActiveF,Loop
 
 	; -- send data, if data is present
 	call	ATTX
@@ -1189,7 +1191,7 @@ LoopCheckATEnd:
 ;----------------------------------------------------------
 ; Still space on the ROM left for the license?
 ;----------------------------------------------------------
-LIC01	DB	"   Copyright 2006, 2007 by Alexander Kurz"
+LIC01	DB	"   Copyright 2006-2009 by Alexander Kurz"
 LIC02	DB	"   "
 GPL01	DB	"   This program is free software; you can redistribute it and/or modify"
 GPL02	DB	"   it under the terms of the GNU General Public License as published by"
